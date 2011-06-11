@@ -1,0 +1,17 @@
+http server which requires only ~200 KB stack memory, and one chunk of heap memory (maybe 1KB) for the command line options parser.
+
+throughput is ~75MB/s
+max clients 1024
+uses only one thread
+cpu usage is 0.0 when idle and around 10% on full throttle on a 2 ghz machine.
+
+recommended to use with musl libc, statically linked
+
+needs libulz https://github.com/rofl0r/libulz
+and rocksock https://github.com/rofl0r/rocksock
+
+allows to run scripts, check the included perl-interface.
+
+it is recommended to pass a directory with tempfs as working directory to the executable.
+
+
