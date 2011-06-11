@@ -13,6 +13,7 @@
 #include <time.h>
 #include <unistd.h>
 #include <stdio.h>
+#include <stdint.h>
 #include <fcntl.h>
 #include <errno.h>
 #include <arpa/inet.h>
@@ -147,14 +148,14 @@ const char* httpserver_get_contenttype(char* filename, char* fileext) {
 	unsigned char* fex = (unsigned char*) fileext;
 	FILE* temp;
 	
-	*(int*) fe = 0;
+	*(uint32_t*) fe = 0;
 	for (i = 0; i < 4; i++) {
 		if(!fex[i]) break;
 		fe[i] = fex[i];
 	}
 	i = 0;
 	while(typemap[i].fileext) {
-		if(*(int*) fe == *(int*) typemap[i].fileext)
+		if(*(uint32_t*) fe == *(uint32_t*) typemap[i].fileext)
 			return typemap[i].content_type;
 		i++;
 	}
