@@ -19,7 +19,7 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 
-#include "../lib/rocksockserver.h"
+#include "../rocksock/rocksockserver.h"
 #include "../lib/stringptr.h"
 #include "../lib/strlib.h"
 #include "../lib/optparser.h"
