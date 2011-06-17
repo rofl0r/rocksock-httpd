@@ -311,7 +311,7 @@ int httpserver_on_clientwantsdata (void* userdata, int fd) {
 			}
 			if((size_t) nwritten < nread) fseek(self->clients[fd].act_responsestream, -(nread - nwritten), SEEK_CUR);
 		}
-	} else if (self->clients[fd].status == CLIENT_CONNECTED && 
+	} else if ((self->clients[fd].status == CLIENT_CONNECTED || self->clients[fd].status == CLIENT_READING) && 
 			(!(rand() % 1000) && httpserver_check_timeout(self, fd))
 		) {
 		_httpserver_disconnect_client(self, fd, 1);
@@ -335,6 +335,12 @@ int httpserver_request_header_complete(httpserver* self, int client, clientreque
 
 	do {
 		nread = fread(self->buffer, 1, sizeof(self->buffer), self->clients[client].requeststream);
+		// set zero termination, to prevent atoi and strstr going out of bounds.
+		if(nread == sizeof(self->buffer)) {
+			self->buffer[sizeof(self->buffer) -1] = '\0';
+		} else {
+			self->buffer[nread] = '\0';
+		}
 		p = self->buffer;
 		if(req->rqt == RQT_NONE) {
 			if(!nread || (*p != 'G' && *p != 'P')) return -1; // invalid request, we only accept GET and POST.
@@ -358,7 +364,12 @@ int httpserver_request_header_complete(httpserver* self, int client, clientreque
 			memcpy(req->uri, self->buffer + req->streampos, len+1);
 			req->urilength = len;
 			*p = '\r';
-		} else return 0;
+		} else {
+			check_invalid_or_incomplete:
+			if(nread == sizeof(self->buffer)) // if we can't find a valid header in a full buffer
+				return -1;
+			return 0;
+		}	
 		if(checkrnrn) {
 			req->streampos = (p - self->buffer) + 3;
 			return 1;
@@ -366,7 +377,9 @@ int httpserver_request_header_complete(httpserver* self, int client, clientreque
 		p++;
 		req->streampos = p - self->buffer;
 		while(access_ok(p) && !checkrnrn) p++;
-		if(!access_ok(p)) return 0;
+		if(!access_ok(p)) {
+			goto check_invalid_or_incomplete;
+		}
 		// search for content-length.
 		len = req->streampos; // len points to the end of the GET/POST line.
 		req->streampos = (p - self->buffer) + 4;
