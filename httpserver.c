@@ -415,6 +415,7 @@ int httpserver_spawn(httpserver* self, char* script, int client, scripttype styp
 	char infofn[256];
 	pid_t pid;
 	int ret;
+	(void) stype;
 	strncpy(scriptcp, script, sizeof(scriptcp));
 	httpserver_get_client_infostream_fn(self, client);
 	strncpy(infofn, self->pathbuf, sizeof(infofn));
