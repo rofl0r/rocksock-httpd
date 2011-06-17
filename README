@@ -1,17 +1,57 @@
-http server which requires only ~200 KB stack memory, and one chunk of heap memory (maybe 1KB) for the command line options parser.
+ROCKSOCK-HTTPD
+==============
 
-throughput is ~75MB/s
-max clients 1024
-uses only one thread
-cpu usage is 0.0 when idle and around 10% on full throttle on a 2 ghz machine.
+... possibly worlds smallest and most bug-free httpd ...
 
 recommended to use with musl libc, statically linked
 
-needs libulz https://github.com/rofl0r/libulz
-and rocksock https://github.com/rofl0r/rocksock
+pros
+----
 
-allows to run scripts, check the included perl-interface.
++ requires only ~200 KB stack memory, and one chunk of heap memory (maybe 1KB) for the command line options parser.
++ statically linked binary is only ~40 KB (with musl libc)
++ max throughput is ~75MB/s, can be adjusted via buffersize (in sourcecode) for even lower memory usage
++ using asynchronous sockets via select()
++ uses only one thread (useful for i.e. a VPS that is limited by number of processes)
++ cpu usage is 0.0 when idle and around 10% on full throttle on a 2 ghz machine.
++ source code is only ~600 LOC + ~400 lines of library code
++ uses filesystem for "paging", thus removing the need for error-prone memory handling.
+  this also allows it to run on a *very* limited embedded platform, which has barely enough ram for the kernel.
+  of course it is recommended to use tempfs for that paging zone.
++ easy scripting interface. if a known script extension is encountered, the script will be started and 3 filenames 
+  passed to it. the first file contains the entire request received from the client, the 2nd is for the response, 
+  the 3rd for additional information, such as IP address.
++ comes with perl scripting interface. could easily be ported to other scripting langs...
++ keep-alive is supported and can be controlled with a command line argument
++ designed with security in mind
++ no config file needed
 
+cons
+----
+- max parallel clients 1024 (limited by FD_SET_SIZE)
+- does NOT support a whole lot of all the fancy HTTP features, which were invented for blackhat usage. 
+  instead it supports only the subset needed for webbrowsing (GET/POST).
+- does NOT support url-encoded urls at the filename level, i.e. hello%20world.html would become a 404,
+  but the other GET params can be decoded using a script. as a consequence, only ASCII filenames will work.
+- since the httpd is limited to 1024 connections, a DOS attack needs only little attacker ressources.
+  if you have many enemies, you should probably use another httpd for your public website.
+- lengthy script execution will block other parallel connections.
+
+
+NOTICE
+------
 it is recommended to pass a directory with tempfs as working directory to the executable.
+
+Installation
+------------
+
+cd /tmp
+mkdir httpserver-0000
+cd httpserver-0000/
+git clone https://github.com/rofl0r/rocksock-httpd httpd
+git clone https://github.com/rofl0r/libulz lib
+git clone https://github.com/rofl0r/rocksock
+cd httpd
+CC=musl-gcc make
 
 
