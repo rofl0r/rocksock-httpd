@@ -5,7 +5,7 @@ ROCKSOCK="../rocksock"
 #LINKLIBS="-lpthread"
 
 OUTFILE=httpserver
-CFLAGS="-D_GNU_SOURCE -fstack-protector-all -D_FORTIFY_SOURCE=2"
+CFLAGS+="-D_GNU_SOURCE -fstack-protector-all -D_FORTIFY_SOURCE=2"
 
 INCFILES=${ROCKSOCK}/rocksockserver.c ${MYLIB}/strlib.c ${MYLIB}/stringptr.c ${MYLIB}/optparser.c
 
