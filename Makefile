@@ -5,18 +5,18 @@ ROCKSOCK="../rocksock"
 #LINKLIBS="-lpthread"
 
 OUTFILE=httpserver
-CFLAGS="-D_GNU_SOURCE"
+CFLAGS="-D_GNU_SOURCE -fstack-protector-all -D_FORTIFY_SOURCE=2"
 
 INCFILES=${ROCKSOCK}/rocksockserver.c ${MYLIB}/strlib.c ${MYLIB}/stringptr.c ${MYLIB}/optparser.c
 
 all: debug
 
 optimized:
-	musl-gcc ${CFLAGS} -fno-strict-aliasing -Wall -Wextra -O3 -I ${INCLUDES} httpserver.c  ${INCFILES} ${LINKLIBS} -o ${OUTFILE}-$@
+	${CC} ${CFLAGS} -fno-strict-aliasing -Wall -Wextra -O3 -I ${INCLUDES} httpserver.c  ${INCFILES} ${LINKLIBS} -o ${OUTFILE}-$@
 	strip ${OUTFILE}-$@
 
 debug:
-	musl-gcc ${CFLAGS} -Wall -Wextra -g -I ${INCLUDES} httpserver.c ${INCFILES} ${LINKLIBS} -o ${OUTFILE}-$@
+	${CC} ${CFLAGS} -Wall -Wextra -g -I ${INCLUDES} httpserver.c ${INCFILES} ${LINKLIBS} -o ${OUTFILE}-$@
 
 
 .PHONY: all optimized debug
