@@ -331,7 +331,7 @@ int httpserver_request_header_complete(httpserver* self, int client, clientreque
 	rewind(self->clients[client].requeststream);
 
 	#define access_ok(x) ((x) - self->buffer < (ptrdiff_t) nread)
-	#define checkrnrn (*p == '\r' && access_ok(p+1) && p[1] == '\n' && access_ok(p+2) && p[2] == '\r' && access_ok(p+3) && p[3] == '\n')
+	#define checkrnrn (access_ok(p+3) && *p == '\r' && p[1] == '\n' && p[2] == '\r' &&  p[3] == '\n')
 
 	do {
 		nread = fread(self->buffer, 1, sizeof(self->buffer), self->clients[client].requeststream);
@@ -344,14 +344,14 @@ int httpserver_request_header_complete(httpserver* self, int client, clientreque
 		p = self->buffer;
 		if(req->rqt == RQT_NONE) {
 			if(!nread || (*p != 'G' && *p != 'P')) return -1; // invalid request, we only accept GET and POST.
-			if(*p == 'G' && access_ok(p+1) && p[1] == 'E' && access_ok(p+2) && p[2] == 'T' && access_ok(p+3) && p[3] == ' ') {
+			if (nread <= 5) return 0;
+			if(*p == 'G' && p[1] == 'E' && p[2] == 'T' && p[3] == ' ') {
 				req->rqt = RQT_GET;
 				p += 4;
-			} else if (*p == 'P' && access_ok(p+1) && p[1] == 'O' && access_ok(p+2) && p[2] == 'S' && access_ok(p+3) && p[3] == 'T' && access_ok(p+4) && p[4] == ' ') {
+			} else if (*p == 'P' && p[1] == 'O' && p[2] == 'S' && p[3] == 'T' && p[4] == ' ') {
 				req->rqt = RQT_POST;
 				p += 5;
-			} else if (nread <= 5) return 0;
-			else return -1;
+			} else return -1;
 		}
 		req->streampos = p - self->buffer;
 		while(access_ok(++p) && *p != '\r');
@@ -369,11 +369,12 @@ int httpserver_request_header_complete(httpserver* self, int client, clientreque
 			if(nread == sizeof(self->buffer)) // if we can't find a valid header in a full buffer
 				return -1;
 			return 0;
-		}	
+		}
+		// p is pointing to the first \r at this point.
 		if(checkrnrn) {
 			req->streampos = (p - self->buffer) + 3;
 			return 1;
-		}	
+		}
 		p++;
 		req->streampos = p - self->buffer;
 		while(access_ok(p) && !checkrnrn) p++;
@@ -384,10 +385,13 @@ int httpserver_request_header_complete(httpserver* self, int client, clientreque
 		len = req->streampos; // len points to the end of the GET/POST line.
 		req->streampos = (p - self->buffer) + 4;
 		*p = 0;
+		if(len == nread) return -1; // just to be sure...
 		if(req->rqt == RQT_POST) {
 			if(( p = strstr(self->buffer + len, "Content-Length: "))) {
-				p += 16;
-				req->contentlength = atoi(p); // TODO: add \0 after numbers
+				if(access_ok(p + 17)) {
+					p += 16;
+					req->contentlength = atoi(p); // TODO: add \0 after numbers
+				} else return -1;	
 			}
 		}
 		// search for keep-alive
