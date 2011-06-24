@@ -140,22 +140,19 @@ void httpserver_idlemode(httpserver* self, int client) {
 		rocksockserver_set_sleeptime(&self->serva, 5000);
 }
 
-
-__attribute__ ((optimize("no-strict-aliasing"))) 
 const char* httpserver_get_contenttype(char* filename, char* fileext) {
 	size_t i;
-	unsigned char fe[16];
+	unsigned char fe[16] = {0};
 	unsigned char* fex = (unsigned char*) fileext;
 	FILE* temp;
 	
-	*(uint32_t*) fe = 0;
 	for (i = 0; i < 4; i++) {
 		if(!fex[i]) break;
 		fe[i] = fex[i];
 	}
 	i = 0;
 	while(typemap[i].fileext) {
-		if(*(uint32_t*) fe == *(uint32_t*) typemap[i].fileext)
+		if(!memcmp(fe, typemap[i].fileext, 4))
 			return typemap[i].content_type;
 		i++;
 	}

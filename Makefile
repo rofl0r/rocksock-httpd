@@ -12,7 +12,7 @@ INCFILES=${ROCKSOCK}/rocksockserver.c ${MYLIB}/strlib.c ${MYLIB}/stringptr.c ${M
 all: debug
 
 optimized:
-	${CC} ${CFLAGS} -fno-strict-aliasing -Wall -Wextra -O3 -I ${INCLUDES} httpserver.c  ${INCFILES} ${LINKLIBS} -o ${OUTFILE}-$@
+	${CC} ${CFLAGS} -Wall -Wextra -O3 -I ${INCLUDES} httpserver.c  ${INCFILES} ${LINKLIBS} -o ${OUTFILE}-$@
 	strip ${OUTFILE}-$@
 
 debug:
