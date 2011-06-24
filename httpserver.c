@@ -111,6 +111,7 @@ typedef struct {
 	 * 16K is sufficient for a 100Mbit line.
 	 */
 	char pathbuf[256];
+	char tempdir[256];
 	stringptr workdir;
 	stringptr servedir;
 	httpclient clients[FD_SETSIZE];
@@ -572,8 +573,6 @@ int httpserver_on_clientdisconnect (void* userdata, int fd) {
 int httpserver_init(httpserver* srv, char* listenip, short port, const char* workdir, const char* servedir, int log, int timeout, int uid, int gid) {
 	if(!srv || !workdir || !servedir) return 1;
 	memset(srv, 0, sizeof(httpserver));
-	srv->workdir.size = strlen(workdir);
-	srv->workdir.ptr = (char*) workdir;
 	srv->servedir.size = strlen(servedir);
 	srv->servedir.ptr = (char*) servedir;
 	srv->maxrequestsize = 20 * 1024 * 1024;
@@ -587,6 +586,16 @@ int httpserver_init(httpserver* srv, char* listenip, short port, const char* wor
 		perror("setgroups");
 	if(uid != -1 && setuid(uid) == -1) 
 		perror("setuid");
+
+	// set up a temporary dir with 0700, and unpredictable name
+	snprintf(srv->tempdir, sizeof(srv->tempdir), "%s/XXXXXX", workdir);
+	if(!mkdtemp(srv->tempdir)) {
+		perror("mkdtemp");
+		exit(1);
+	}
+	
+	srv->workdir.size = strlen(srv->tempdir);
+	srv->workdir.ptr = srv->tempdir;
 	
 	if(rocksockserver_loop(&srv->serva, srv->buffer, sizeof(srv->buffer), &httpserver_on_clientconnect, &httpserver_on_clientread, &httpserver_on_clientwantsdata, &httpserver_on_clientdisconnect)) return -2;
 	return 0;
@@ -621,7 +630,7 @@ int main(int argc, char** argv) {
 	int port = o_port ? atoi(o_port->ptr) : 80;
 	
 	if(argc < 3 || !o_srvroot || !o_tempfs) syntax(opt);
-	//httpserver_init(&srv, "0.0.0.0", 8080, "/dev/shm/www-srv/", "/tmp/", 1);
+	
 	httpserver_init(&srv, ip, port, o_tempfs->ptr, o_srvroot->ptr, log, timeout, o_uid ? atoi(o_uid->ptr) : -1, o_gid ? atoi(o_gid->ptr) : -1);
 	
 	op_freeOpts(opt);
