@@ -18,6 +18,7 @@
 #include <errno.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
+#include <grp.h>
 
 #include "../rocksock/rocksockserver.h"
 #include "../lib/stringptr.h"
@@ -582,6 +583,8 @@ int httpserver_init(httpserver* srv, char* listenip, short port, const char* wor
 	//dropping privs after bind()
 	if(gid != -1 && setgid(gid) == -1)
 		perror("setgid");
+	if(gid != -1 && setgroups(0, NULL) == -1)
+		perror("setgroups");
 	if(uid != -1 && setuid(uid) == -1) 
 		perror("setuid");
 	
