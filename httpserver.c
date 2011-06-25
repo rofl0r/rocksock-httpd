@@ -174,18 +174,27 @@ const char* httpserver_get_contenttype(char* filename, char* fileext) {
 	return content_type_text_plain;	
 }
 
+__attribute__ ((noreturn))
+void httpserver_handle_pathbuf_size(void) {
+	fprintf(stderr, "%s", "FATAL: filename on tempfs exceeding 256 bytes\n");
+	exit(1);
+}
+
 char* httpserver_get_client_requeststream_fn(httpserver* self, int client) {
-	snprintf(self->pathbuf, sizeof(self->pathbuf), "%s%d.req", self->workdir.ptr, client);
+	if(snprintf(self->pathbuf, sizeof(self->pathbuf), "%s/%d.requ", self->workdir.ptr, client) >= (int) sizeof(self->pathbuf))
+		httpserver_handle_pathbuf_size();
 	return self->pathbuf;
 }
 
 char* httpserver_get_client_responsestream_fn(httpserver* self, int client) {
-	snprintf(self->pathbuf, sizeof(self->pathbuf), "%s%d.resp", self->workdir.ptr, client);
+	if(snprintf(self->pathbuf, sizeof(self->pathbuf), "%s/%d.resp", self->workdir.ptr, client) >= (int) sizeof(self->pathbuf))
+		httpserver_handle_pathbuf_size();
 	return self->pathbuf;
 }
 
 char* httpserver_get_client_infostream_fn(httpserver* self, int client) {
-	snprintf(self->pathbuf, sizeof(self->pathbuf), "%s%d.info", self->workdir.ptr, client);
+	if(snprintf(self->pathbuf, sizeof(self->pathbuf), "%s/%d.info", self->workdir.ptr, client) >= (int) sizeof(self->pathbuf))
+		httpserver_handle_pathbuf_size();
 	return self->pathbuf;
 }
 
@@ -214,6 +223,7 @@ int httpserver_disconnect_client(httpserver* self, int client, int doclose, int 
 	}
 	
 	self->clients[client].requestsize = 0;
+	unlink(httpserver_get_client_infostream_fn(self, client));
 	unlink(httpserver_get_client_requeststream_fn(self, client));
 	unlink(httpserver_get_client_responsestream_fn(self, client));
 	if(doclose == 1) 
@@ -232,9 +242,11 @@ int httpserver_disconnect_client(httpserver* self, int client, int doclose, int 
 
 int httpserver_on_clientconnect (void* userdata, struct sockaddr_storage* clientaddr, int fd) {
 	static const char ip_msg[] = "IP: ";
-	static const size_t ip_msg_l = sizeof(ip_msg);
+	static const size_t ip_msg_l = sizeof(ip_msg) - 1;
 	httpserver* self = (httpserver*) userdata;
 	FILE* info;
+	unsigned fail = 0;
+	size_t len;
 	
 	if(fd < 0) return -1;
 	if(fd >= FD_SETSIZE) {
@@ -249,9 +261,16 @@ int httpserver_on_clientconnect (void* userdata, struct sockaddr_storage* client
 	_httpserver_disconnect_client(self, fd, -1); // make a clean state and delete the files. this is important for the timeout check.
 	self->clients[fd].status = CLIENT_CONNECTED;
 	if(httpserver_get_client_infostream_fn(self, fd) && httpserver_get_client_ip(self, clientaddr) && (info = fopen(self->pathbuf, "w+"))) {
-		fwrite(ip_msg, 1, ip_msg_l, info);
-		fwrite(self->buffer, 1, strlen(self->buffer), info);
+		if(fwrite(ip_msg, 1, ip_msg_l, info) < ip_msg_l) fail = 1;
+		len = strlen(self->buffer); 
+		if(!fail && (fwrite(self->buffer, 1, len, info) != len)) fail = 1;
 		fclose(info);
+		if(fail) {
+			if(self->log)
+				fprintf(stdout, "[%d] error writing info file\n", fd);
+			close(fd);
+			return -3;
+		}
 		if(self->log)
 			fprintf(stdout, "[%d] Connect from %s\n", fd, self->buffer);
 	}
@@ -516,7 +535,11 @@ int httpserver_deliver(httpserver* self, int client, clientrequest* req) {
 	}
 	self->clients[client].responsestream_header = fopen(httpserver_get_client_responsestream_fn(self, client), rh ? "w+" : "r+");
 	if(rh)
-		fwrite(rh, 1, rl, self->clients[client].responsestream_header);
+		if(fwrite(rh, 1, rl, self->clients[client].responsestream_header) != rl) {
+			if(self->log)
+				fprintf(stdout, "[%d] error writing to response file\n", client);
+			_httpserver_disconnect_client(self, client, 1);
+		}
 
 	return res;
 }
@@ -540,7 +563,11 @@ int httpserver_on_clientread (void* userdata, int fd, size_t nread) {
 				httpserver_turbomode(self, fd);
 			
 			self->clients[fd].requestsize += nread;
-			fwrite(self->buffer, 1, nread, self->clients[fd].requeststream);
+			if(fwrite(self->buffer, 1, nread, self->clients[fd].requeststream) != nread) {
+				if(self->log) 
+					fprintf(stdout, "[%d] error writing to response file\n", fd);
+				_httpserver_disconnect_client(self, fd, 1);
+			}
 			ret = httpserver_request_header_complete(self, fd, &req);
 			if(!ret) return 0;
 			if(ret == -1) {
