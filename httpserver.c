@@ -214,9 +214,17 @@ char* httpserver_get_client_ip(httpserver* self, struct sockaddr_storage* ip) {
 }
 
 // doclose: 1: close conn, 0: client already disconnected, -1: init only
+#ifdef DISCONNECT_DEBUG
 int httpserver_disconnect_client(httpserver* self, int client, int doclose, int line, const char* file, const char* function) {
+#else
+int httpserver_disconnect_client(httpserver* self, int client, int doclose) {
+#endif
 	if(doclose != -1 && self->log)
-		fprintf(stdout, "[%d] disconnecting client @%s %s:%d - forced: %d\n", client, file, function, line, doclose);
+#ifdef DISCONNECT_DEBUG
+		fprintf(stdout, "[%d] disconnecting client (%s.%s:%d) - forced: %d\n", client, file, function, line, doclose);
+#else
+		fprintf(stdout, "[%d] disconnecting client - forced: %d\n", client, doclose);
+#endif
 	if(self->clients[client].responsestream_header) {
 		fclose(self->clients[client].responsestream_header);
 		self->clients[client].responsestream_header = NULL;
@@ -246,8 +254,11 @@ int httpserver_disconnect_client(httpserver* self, int client, int doclose, int 
 	self->clients[client].flags = CL_NONE;
 	return 0;
 }
-
+#ifdef DISCONNECT_DEBUG
 #define _httpserver_disconnect_client(x, y, z) httpserver_disconnect_client(x, y, z, __LINE__, __FILE__, __FUNCTION__);
+#else
+#define _httpserver_disconnect_client(x, y, z) httpserver_disconnect_client(x, y, z);
+#endif
 
 int httpserver_on_clientconnect (void* userdata, struct sockaddr_storage* clientaddr, int fd) {
 	static const char ip_msg[] = "IP: ";
