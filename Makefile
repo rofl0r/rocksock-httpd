@@ -6,9 +6,10 @@ ROCKSOCK=../rocksock
 
 OUTFILE=httpserver
 CFLAGS_OWN=-Wall -D_GNU_SOURCE 
-CFLAGS_OWN+=-Wextra -fstack-protector-all -D_FORTIFY_SOURCE=2
 
 INCFILES=${ROCKSOCK}/rocksockserver.c ${MYLIB}/strlib.c ${MYLIB}/stringptr.c ${MYLIB}/optparser.c
+
+-include config.mak
 
 all: debug
 
