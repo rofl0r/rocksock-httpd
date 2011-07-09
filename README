@@ -54,4 +54,8 @@ git clone https://github.com/rofl0r/rocksock
 cd httpd
 CC=musl-gcc make
 
+alternatively you can copy dist/config.make into the httpd dir and tune 
+it for even less mem usage, or override CFLAGS before invoking make.
+
+
 

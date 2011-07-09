@@ -113,8 +113,12 @@ typedef struct {
 	FILE* act_responsestream;
 } httpclient;
 
+#if (! defined(USER_BUFSIZE_KB)) || (USER_BUFSIZE_KB > 1024)
+#define USER_BUFSIZE_KB 96
+#endif
+
 typedef struct {
-	char buffer[96*1024]; 
+	char buffer[USER_BUFSIZE_KB*1024]; 
 	/* with buffersize 96K we can deliver a smoking ~75MB/s in turbomode. 
 	 * bigger values doesnt seem to improve performance. maybe my hdd's were the bottleneck.
 	 * 16K is sufficient for a 100Mbit line.
@@ -123,7 +127,7 @@ typedef struct {
 	char tempdir[256];
 	stringptr workdir;
 	stringptr servedir;
-	httpclient clients[FD_SETSIZE];
+	httpclient clients[USER_MAX_FD];
 	rocksockserver serva;
 	size_t maxrequestsize;
 	time_t timeoutsec;
@@ -269,7 +273,7 @@ int httpserver_on_clientconnect (void* userdata, struct sockaddr_storage* client
 	size_t len;
 	
 	if(fd < 0) return -1;
-	if(fd >= FD_SETSIZE) {
+	if(fd >= USER_MAX_FD) {
 		close(fd);
 		return -2;
 	}
@@ -612,7 +616,7 @@ int httpserver_on_clientread (void* userdata, int fd, size_t nread) {
 
 int httpserver_on_clientdisconnect (void* userdata, int fd) {
 	httpserver* self = (httpserver*) userdata;
-	if(fd < 0 || fd >= FD_SETSIZE) 
+	if(fd < 0 || fd >= USER_MAX_FD) 
 		return -1;
 	return _httpserver_disconnect_client(self, fd, 0);
 }
