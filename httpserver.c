@@ -34,6 +34,11 @@
 #include "../lib/strlib.h"
 #include "../lib/optparser.h"
 
+//RcB: DEP "../lib/stringptr.c"
+//RcB: DEP "../lib/strlib.c"
+//RcB: DEP "../lib/optparser.c"
+//RcB: DEP "../rocksock/rocksockserver.c"
+
 static const char content_type_text_html[] = "text/html";
 static const char content_type_text_plain[] = "text/plain";
 static const char content_type_binary_octet_stream[] = "binary/octet-stream";
@@ -51,6 +56,7 @@ static const char file_type_gif[] = "gif";
 static const char file_type_jpeg[] = "jpeg";
 static const char file_type_jpg[] = "jpg";
 static const char file_type_png[] = "png";
+static const char file_type_cgi[] = "cgi";
 
 
 typedef struct {
@@ -524,7 +530,7 @@ int httpserver_deliver(httpserver* self, int client, clientrequest* req) {
 		respond(err404, err404l, 2);
 	
 	fe = getFileExt(self->pathbuf, strlen(self->pathbuf));
-	if(!memcmp(fe, "pl", 2)) {
+	if(!memcmp(fe, "pl", 2) || !memcmp(fe, "cgi", 3)) {
 		if(access(self->pathbuf, X_OK) == -1) {
 			if(self->log)
 				fprintf(stdout, "[%d] script %s not executable\n", client, self->pathbuf);
@@ -557,7 +563,10 @@ int httpserver_deliver(httpserver* self, int client, clientrequest* req) {
 		else
 			fprintf(stdout, "[%d] 200 %s\n", client, req->uri);
 	}
-	self->clients[client].responsestream_header = fopen(httpserver_get_client_responsestream_fn(self, client), rh ? "w+" : "r+");
+	if(!(self->clients[client].responsestream_header = fopen(httpserver_get_client_responsestream_fn(self, client), rh ? "w+" : "r+"))) {
+		puts(httpserver_get_client_responsestream_fn(self, client));
+		perror("failed to open response file");
+	}
 	if(rh)
 		if(fwrite(rh, 1, rl, self->clients[client].responsestream_header) != rl) {
 			if(self->log)
