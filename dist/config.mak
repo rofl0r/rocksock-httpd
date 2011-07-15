@@ -10,4 +10,8 @@ CFLAGS+=-DUSER_BUFSIZE_KB=96
 #set number of maximum connections (if more than FD_SETSIZE, it will be overridden in source)
 CFLAGS+=-DUSER_MAX_FD=1024
 
+#put every function in a separate section and attempt dead-code-elimination
+CFLAGS+=-ftree-dce -fdata-sections -ffunction-sections -Wl,--gc-sections
 
+#link time optimization. gets another 4 KB of bloat removed here
+CFLAGS+=-flto -fwhole-program

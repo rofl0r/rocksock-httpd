@@ -14,7 +14,7 @@ INCFILES=${ROCKSOCK}/rocksockserver.c ${MYLIB}/strlib.c ${MYLIB}/stringptr.c ${M
 all: debug
 
 optimized:
-	${CC} ${CFLAGS_OWN} -s -I ${INCLUDES} httpserver.c  ${INCFILES} ${LINKLIBS} ${CFLAGS} -o ${OUTFILE}-$@
+	${CC} ${CFLAGS_OWN} -s -Os -I ${INCLUDES} httpserver.c  ${INCFILES} ${LINKLIBS} ${CFLAGS} -o ${OUTFILE}-$@
 
 debug:
 	${CC} ${CFLAGS_OWN} -g -I ${INCLUDES} httpserver.c ${INCFILES} ${LINKLIBS} ${CFLAGS} -o ${OUTFILE}-$@
