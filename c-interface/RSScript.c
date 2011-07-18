@@ -18,6 +18,8 @@
 //RcB: DEP "../../lib/stringptr.c"
 //RcB: DEP "../../lib/strlib.c"
 //RcB: DEP "../../lib/kvlist.c"
+//RcB: DEP "../../lib/fileparser.c"
+
 #ifndef IN_KDEVELOP_PARSER
 //static const stringptr* failed_handle_msg = SPLITERAL("failed to get filehandle");
 static const stringptr* authcookiedb = SPLITERAL("/tmp/RSSauth-cookie.txt");
@@ -54,8 +56,7 @@ void rss_init(RSScript* script, int argc, char** argv) {
 	script->req.getparams = kv_new(8);
 	script->req.cookies = kv_new(8);
 	script->info = kv_new(8);
-	script->response_linecount = 1024;
-	script->response_lines = new_stringptrlist(script->response_linecount);
+	script->response_lines = new_stringptrlist(255);
 }
 
 static void my_kv_free(kvlist* l) {
@@ -141,6 +142,7 @@ void rss_read_request(RSScript* script) {
 	int m1 = -1;
 	size_t pos, pos2;
 	char* s1, *max;
+	char save;
 	stringptr* rp, *key, *val;
 	stringptrlist* kv, *kv2, *kv3;
 	fileparser_open(p, script->request_fn);
@@ -168,28 +170,34 @@ void rss_read_request(RSScript* script) {
 			while(s1 < max && *s1 && *s1 != '?' && *s1 != ' ') 
 				s1++;
 			if(s1 < max) {
+				save = *s1;
 				*s1 = 0;
 				pos2 = (s1 - p->buf);
 			}
 			else pos2 = p->len;
 			line->size = pos2 - pos;
 			script->req.uri = copy_string(line);
+			*s1 = save;
 			if(*s1 == '?' && s1 < max && *(++s1)) {
 				line->ptr = s1;
-				line->size = (p->buf + p->len) - s1;
-				if((rp = url_decode(line))) {
-					if((kv = stringptr_splitc(rp, '&'))) {
-						for(k = 0; k < kv->size; k++) {
-							if((kv2 = stringptr_splitc(getlistitem(kv, k), '='))) {
-								if((key = getlistitem(kv2, 0)) && (val = getlistitem(kv2, 1)) && (s1 = stringptr_strdup(key))) {
-									kv_add(&script->req.getparams, s1, key->size, copy_string(val));
+				while(s1 < max && *s1&& *s1 != ' ') s1++;
+				if(s1 < max && *s1) {
+					*s1 = 0;
+					line->size = s1 - line->ptr;
+					if((rp = url_decode(line))) {
+						if((kv = stringptr_splitc(rp, '&'))) {
+							for(k = 0; k < kv->size; k++) {
+								if((kv2 = stringptr_splitc(getlistitem(kv, k), '='))) {
+									if((key = getlistitem(kv2, 0)) && (val = getlistitem(kv2, 1)) && (s1 = stringptr_strdup(key))) {
+										kv_add(&script->req.getparams, s1, key->size, copy_string(val));
+									}
+									free(kv2);
 								}
-								free(kv2);
 							}
+							free(kv);
 						}
-						free(kv);
+						free_string(rp);
 					}
-					free_string(rp);
 				}
 			}
 			goto le;
@@ -492,17 +500,14 @@ void rss_set_contenttype(RSScript* script, stringptr* ct) {
 void rss_respond(RSScript* script, stringptr* msg) {
 	char* p2;
 	if(!script->response_err) die("need to set responsetype before respond()!");
-	if(script->response_lines->size == script->response_linecount) {
-		if(resize_stringptrlist(script->response_lines, script->response_linecount * 2))
-			script->response_linecount *= 2;
-	}
+	if(!msg || !msg->ptr || !msg->size) return;
 	if(!(p2 = stringptr_strdup(msg))) return;
-	setlistitem(script->response_lines, script->response_lines->size++, p2, msg->size);
-	script->response_len += msg->size;
+	if(stringptrlist_add(&script->response_lines, p2, msg->size)) script->response_len += msg->size;
+	return;
 }
 
 void rss_submit(RSScript* script) {
-#ifdef KDEVELOP_BUG
+#ifndef IN_KDEVELOP_PARSER
 	stringptr* err404 = SPLITERAL("HTTP/1.1 404 Not found\r\nContent-Type: text/html\r\nContent-Length: 3\r\n\r\n404");
 	stringptr* err500 = SPLITERAL("HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/html\r\nContent-Length: 5\r\n\r\nError");
 	stringptr* err200 = SPLITERAL("HTTP/1.1 200 OK\r\nContent-Type: ");

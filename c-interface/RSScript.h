@@ -5,6 +5,7 @@
 
 #include "../../lib/kvlist.h"
 #include "../../lib/stringptr.h"
+#include "../../lib/stringptrlist.h"
 
 typedef enum {
 	RM_GET,
