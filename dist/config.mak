@@ -15,3 +15,7 @@ CFLAGS+=-ftree-dce -fdata-sections -ffunction-sections -Wl,--gc-sections
 
 #link time optimization. gets another 4 KB of bloat removed here
 CFLAGS+=-flto -fwhole-program
+
+#allow directory traversal
+#CFLAGS+=-DALLOW_TRAVERSAL
+

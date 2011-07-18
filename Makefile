@@ -7,7 +7,7 @@ ROCKSOCK=../rocksock
 OUTFILE=httpserver
 CFLAGS_OWN=-Wall -D_GNU_SOURCE 
 
-INCFILES=${ROCKSOCK}/rocksockserver.c ${MYLIB}/strlib.c ${MYLIB}/stringptr.c ${MYLIB}/optparser.c
+INCFILES=${ROCKSOCK}/rocksockserver.c ${MYLIB}/strlib.c ${MYLIB}/stringptr.c ${MYLIB}/optparser.c ${MYLIB}/logger.c ${MYLIB}/stringptrlist.c
 
 -include config.mak
 

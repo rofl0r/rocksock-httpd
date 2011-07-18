@@ -370,6 +370,8 @@ int httpserver_on_clientwantsdata (void* userdata, int fd) {
 //parses the request, returns -1 if invalid, 0 if not complete, 1 if complete.
 // if complete, the clientrequest member will be filled.
 int httpserver_request_header_complete(httpserver* self, int client, clientrequest* req) {
+	static const char CL_LIT[] = "Content-*ength: ";
+	static const size_t CL_LITS = sizeof(CL_LIT) - 1;
 	size_t nread;
 	size_t len;
 	int done = 0;
@@ -435,11 +437,12 @@ int httpserver_request_header_complete(httpserver* self, int client, clientreque
 		*p = 0;
 		if(len == nread) return -1; // just to be sure...
 		if(req->rqt == RQT_POST) {
-			if(( p = strstr(self->buffer + len, "Content-Length: "))) {
-				if(access_ok(p + 17)) {
-					p += 16;
-					req->contentlength = atoi(p); // TODO: add \0 after numbers
-				} else return -1;	
+			//if(( p = strstr(self->buffer + len, "Content-Length: "))) { // THANX LYNX for "Content-length"
+			if(( p = strstar(self->buffer + len, CL_LIT, CL_LITS))) {
+				if(access_ok(p + CL_LITS + 1)) {
+					p += CL_LITS;
+					req->contentlength = atoi(p);
+				} else return -1;
 			}
 		}
 		// search for keep-alive
@@ -465,7 +468,13 @@ int httpserver_get_filename(httpserver* self, clientrequest* req) {
 	while (*p && *p != '?' && *p != ' ') p++;
 	req->urilength = p - req->uri;
 	*p = 0;
-	if(!req->urilength || strstr(req->uri, "..")) return -1;
+	if(!req->urilength
+#ifdef ALLOW_TRAVERSAL
+#warning this is a dangerous flag and should only be set for testing!
+#else
+		|| strstr(req->uri, "..")
+#endif
+	) return -1;
 	vlen = (p[-1] == '/') ? index_html_l : 0;
 	if(self->servedir.size + req->urilength + vlen >= sizeof(self->pathbuf)) return -2;
 	memcpy(self->pathbuf, self->servedir.ptr, self->servedir.size);
@@ -666,7 +675,7 @@ void syntax(opts* opt) {
 	puts("progname -srvroot=/srv/htdocs -tempfs=/dev/shm/ -listenip=0.0.0.0 -port=80 -timeout=30 -log=0 -uid=0 -gid=0");
 	puts("all options except tempfs and srvroot are optional");
 	printf("passed options were:\n");
-	op_fprintAll(opt, stdout);
+	op_printAll(opt);
 	op_freeOpts(opt);
 	exit(1);
 }
