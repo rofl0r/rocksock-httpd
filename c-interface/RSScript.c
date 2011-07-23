@@ -22,14 +22,19 @@
 
 #ifndef IN_KDEVELOP_PARSER
 //static const stringptr* failed_handle_msg = SPLITERAL("failed to get filehandle");
-static const stringptr* authcookiedb = SPLITERAL("/tmp/RSSauth-cookie.txt");
+#ifndef COOKIE_DB
+#error need to set COOKIE_DB to a pathname
+#else
+static const stringptr* authcookiedb = SPLITERAL(COOKIE_DB);
+#endif
 static const stringptr* tempfile_template = SPLITERAL("/tmp/XXXXXX");
 static const stringptr* authtimeoutsecs_as_str = SPLITERAL("1800");
 #endif
 static int authtimeoutsecs = 30 * 60;
+static const char RSS_EOUTOFMEM[] = "out of memory";
 
 __attribute__ ((noreturn))
-static void die(char* s) {
+static void die(const char* s) {
 	puts(s);
 	exit(1);
 }
@@ -38,11 +43,13 @@ void rss_init(RSScript* script, int argc, char** argv) {
 	srand(time(NULL));
 	umask(S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH); // umask _removes_ the bits. 
 	if(argc < 4) {
-		puts("invalid argument count");
-		exit(1);
+		die("invalid argument count");
 	}
 #ifdef DEBUG
 	stringptr* dump = readfile(argv[1]);
+	if(!dump) {
+		die("ERROR, req file not found or unable to read");
+	}
 	writefile("last.req", dump);
 	free_string(dump);
 #endif
@@ -122,6 +129,9 @@ stringptr* url_decode(stringptr* url) {
 					result->ptr[result->size] = (hexval(url->ptr + (i-1)) * 16) + hexval(url->ptr + i);
 				}
 				break;
+			case '+':
+				result->ptr[result->size] = ' ';
+				break;
 			default:
 				result->ptr[result->size] = url->ptr[i];
 		}
@@ -145,7 +155,7 @@ void rss_read_request(RSScript* script) {
 	char save;
 	stringptr* rp, *key, *val;
 	stringptrlist* kv, *kv2, *kv3;
-	fileparser_open(p, script->request_fn);
+	if(fileparser_open(p, script->request_fn)) die("file access");
 	while(!fileparser_readline(p)) {
 		if(!doneheader)
 			script->req.headersize += p->len + 1; // + cut off '\n' at the end
@@ -174,7 +184,10 @@ void rss_read_request(RSScript* script) {
 				*s1 = 0;
 				pos2 = (s1 - p->buf);
 			}
-			else pos2 = p->len;
+			else {
+				pos2 = p->len;
+				save = 0;
+			}
 			line->size = pos2 - pos;
 			script->req.uri = copy_string(line);
 			*s1 = save;
@@ -187,7 +200,8 @@ void rss_read_request(RSScript* script) {
 					if((rp = url_decode(line))) {
 						if((kv = stringptr_splitc(rp, '&'))) {
 							for(k = 0; k < kv->size; k++) {
-								if((kv2 = stringptr_splitc(getlistitem(kv, k), '='))) {
+								stringptr* baz;
+								if((baz = getlistitem(kv, k)) && (kv2 = stringptr_splitc(baz, '='))) {
 									if((key = getlistitem(kv2, 0)) && (val = getlistitem(kv2, 1)) && (s1 = stringptr_strdup(key))) {
 										kv_add(&script->req.getparams, s1, key->size, copy_string(val));
 									}
@@ -374,7 +388,7 @@ int rss_is_cookie_authed(RSScript* script) {
 	time_t timeout;
 	int res = 0;
 
-	if(!script->info->size) rss_read_info(script);
+	//if(!script->info->size) rss_read_info(script);
 	if(!(req = rss_get_request(script))) return 0;
 	if(!kv_find(script->req.cookies, SPLITERAL("auth"), (void**)&s)) return 0;
 	if(!fileparser_open(p, authcookiedb->ptr)) {
@@ -397,6 +411,7 @@ int rss_is_cookie_authed(RSScript* script) {
 	return res;
 }
 
+// generates a 64bit random cookie for auth
 stringptr* rss_create_auth_cookie(RSScript* script) {
 	stringptr* res = new_string(16);
 	if(!res) return NULL;
@@ -407,29 +422,24 @@ stringptr* rss_create_auth_cookie(RSScript* script) {
 	return res;
 }
 
-/*
-shortcut function, use only before you send an actual response, i.e. redirect_soft.
-*/
-void rss_make_auth_cookie(RSScript* script) {
-	stringptr* cookie = rss_create_auth_cookie(script);
+// make a valid cookie and add to response struct
+static int rss_add_authed_cookie(RSScript* script, stringptr* cookie) {
 	stringptrv* test;
 	kvlist* lcookie;
 	size_t i;
-	if(!cookie || !(lcookie = kv_new(8))) return;
-	rss_set_cookie_authed(script, cookie);
+	if(!cookie || !(lcookie = kv_new(8))) return 0;
 	kv_add(&lcookie, strdup("name"), 4, copy_string(SPLITERAL("auth")));
 	kv_add(&lcookie, strdup("value"), 5, cookie);
 	kv_add(&lcookie, strdup("Max-Age"), 7, copy_string((stringptr*)authtimeoutsecs_as_str));
 	kv_add(&lcookie, strdup("Path"), 4, copy_string(SPLITERAL("/")));
 	for(i = 0; i < lcookie->size; i++)
 		if((test = kv_get(lcookie, i)) && (!test->ptr || !test->value))
-			die("out of mem");
+			die(RSS_EOUTOFMEM);
 	rss_set_cookie(script, lcookie);
+	return 1;
 }
 
-void rss_set_cookie_authed(RSScript* script, stringptr* cookie) {
-	stringptr *authcookie;
-	rss_http_request* req;
+static void rss_set_cookie_authdb_entry(RSScript* script, stringptr* authcookie) {
 	FILE *tmp; int temp;
 	fileparser pv, *p = &pv;
 	stringptr fcc, *fc = &fcc;
@@ -438,11 +448,7 @@ void rss_set_cookie_authed(RSScript* script, stringptr* cookie) {
 	char buf[24];
 	char tmpname[24];
 	int done = 0;
-	if(!cookie) {
-		req = rss_get_request(script);
-		if(!kv_find(req->cookies, SPLITERAL("auth"), (void**) &authcookie)) die("authcookie not set!");
-	} else 
-		authcookie = cookie;
+
 	if(tempfile_template->size + 1 > sizeof(tmpname)) die("temp filename exceeds bufsize");
 	memcpy(tmpname, tempfile_template->ptr, tempfile_template->size+1);
 	if((temp = mkstemp(tmpname)) == 1 || !(tmp = fdopen(temp, "w"))) die("cannot make tempfile");
@@ -451,14 +457,17 @@ void rss_set_cookie_authed(RSScript* script, stringptr* cookie) {
 		while((!fileparser_readline(p)) && (!fileparser_getline(p, fc))) {
 			stringptr_chomp(fc);
 			if((kv = stringptr_splitc(fc, '|'))) {
-				if((timeout = getlistitem(kv, 0)) && (fcookie = getlistitem(kv,1)) && streq(authcookie, fcookie)) {
-					writeself:
-					fwrite(buf, 1, snprintf(buf, sizeof(buf), "%ld|", time(NULL) + authtimeoutsecs), tmp);
-					fwrite(authcookie->ptr, 1, authcookie->size, tmp);
-					done = 1;
-				} else {
-					fwrite(fc->ptr, 1, fc->size, tmp);
-				}
+				if((timeout = getlistitem(kv, 0)) && (fcookie = getlistitem(kv,1))) {
+					if(streq(authcookie, fcookie)) {
+						writeself:
+						fwrite(buf, 1, snprintf(buf, sizeof(buf), "%ld|", time(NULL) + authtimeoutsecs), tmp);
+						fwrite(authcookie->ptr, 1, authcookie->size, tmp);
+						done = 1;
+					} else {
+						fwrite(fc->ptr, 1, fc->size, tmp);
+					}
+				} else 
+					continue;
 				fwrite("\n", 1, 1, tmp);
 				if(!kv) goto jumpback;
 				free(kv);
@@ -473,6 +482,29 @@ void rss_set_cookie_authed(RSScript* script, stringptr* cookie) {
 	jumpback:
 	fclose(tmp);
 	rename(tmpname, authcookiedb->ptr);
+}
+
+// this is the func to be called from userland. sets the db entry AND the entry in the submit struct
+void rss_set_cookie_authed(RSScript* script, stringptr* cookie) {
+	stringptr* authcookie;
+	rss_http_request* req;
+	if(!cookie) {
+		req = rss_get_request(script);
+		if(!kv_find(req->cookies, SPLITERAL("auth"), (void**) &authcookie)) die("authcookie not set!");
+	} else 
+		authcookie = cookie;	
+	rss_set_cookie_authdb_entry(script, authcookie);
+	rss_add_authed_cookie(script, authcookie);
+}
+
+/*
+this is the function that CREATES a NEW cookie. use only on successfull login
+additionally it adds it to the response struct and the db
+*/
+void rss_make_auth_cookie(RSScript* script) {
+	stringptr* cookie = rss_create_auth_cookie(script);
+	if(!cookie || !rss_add_authed_cookie(script, cookie)) return;
+	rss_set_cookie_authdb_entry(script, cookie);
 }
 
 stringptr* rss_get_ip(RSScript* script) {
@@ -571,9 +603,9 @@ void rss_redirect_soft(RSScript* script, stringptr* newloc) {
 	if(!newloc) return;
 	rss_set_responsetype(script, 200);
 	rss_set_contenttype(script, SPLITERAL("text/html"));
-	if((out = stringptr_concat(SPLITERAL("<html><META HTTP-EQUIV=\"Refresh\" CONTENT=\"1;URL="), newloc, SPLITERAL("\"></html>"), 0)))
+	if((out = stringptr_concat(SPLITERAL("<html><META HTTP-EQUIV=\"Refresh\" CONTENT=\"1;URL="), newloc, SPLITERAL("\"></html>"), NULL)))
 		rss_respond(script, out);
-	else die("out of mem");
+	else die(RSS_EOUTOFMEM);
 	rss_submit(script);
 }
 
@@ -582,7 +614,7 @@ void rss_redirect_hard(RSScript* script, stringptr* newloc) {
 	if(!newloc) return;
 	FILE* fout;
 	if(!(fout = fopen(script->response_fn, "w"))) die("could not open resp. file");
-	if((out = stringptr_concat(SPLITERAL("HTTP/1.1 307 Moved temporary\r\nLocation: "), newloc, SPLITERAL("\r\nContent-Type: text/html\r\nContent-Length: 3\r\n\r\n307"), 0)))
+	if((out = stringptr_concat(SPLITERAL("HTTP/1.1 307 Moved temporary\r\nLocation: "), newloc, SPLITERAL("\r\nContent-Type: text/html\r\nContent-Length: 3\r\n\r\n307"), NULL)))
 		fwrite(out->ptr, 1, out->size, fout);
 	fclose(fout);
 }
