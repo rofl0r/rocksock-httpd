@@ -51,8 +51,11 @@ cd httpserver-0000/
 git clone https://github.com/rofl0r/rocksock-httpd httpd
 git clone https://github.com/rofl0r/libulz lib
 git clone https://github.com/rofl0r/rocksock
+git clone https://github.com/rofl0r/rcb
+export PATH=$PATH:/tmp/httpserver-0000/rcb
+ln -s /tmp/httpserver-0000/rcb/rcb.pl /tmp/httpserver-0000/rcb/rcb
 cd httpd
-CC=musl-gcc make
+CC="musl-gcc -static" make
 
 alternatively you can copy dist/config.make into the httpd dir and tune 
 it for even less mem usage, or override CFLAGS before invoking make.
