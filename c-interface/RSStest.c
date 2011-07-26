@@ -1,6 +1,5 @@
 #include <stdio.h>
 #include "RSScript.h"
-//RcB: DEP "RSScript.c"
 
 #define fo_sure
 int main(int argc, char** argv) {

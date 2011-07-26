@@ -1,23 +1,25 @@
-INCLUDES=../lib
-LINKDIRS=../lib
-MYLIB=../lib
-ROCKSOCK=../rocksock
-#LINKLIBS="-lpthread"
+INCLUDES="."
+LINKDIRS=
+LINKLIBS=
 
-OUTFILE=httpserver
-CFLAGS_OWN=-Wall -D_GNU_SOURCE 
+MAINFILE=httpserver.c
 
-INCFILES=${ROCKSOCK}/rocksockserver.c ${MYLIB}/strlib.c ${MYLIB}/stringptr.c ${MYLIB}/optparser.c ${MYLIB}/logger.c ${MYLIB}/stringptrlist.c
+CFLAGS_OWN=-Wall -D_GNU_SOURCE
+CFLAGS_DBG=-g
+CFLAGS_OPT=-s -Os
 
 -include config.mak
+
+CFLAGS_RCB_OPT=${CFLAGS_OWN} ${CFLAGS_OPT} -I ${INCLUDES} ${LINKLIBS} ${CFLAGS}
+CFLAGS_RCB_DBG=${CFLAGS_OWN} ${CFLAGS_DBG} -I ${INCLUDES} ${LINKLIBS} ${CFLAGS}
 
 all: debug
 
 optimized:
-	${CC} ${CFLAGS_OWN} -s -Os -I ${INCLUDES} httpserver.c  ${INCFILES} ${LINKLIBS} ${CFLAGS} -o ${OUTFILE}-$@
+	CFLAGS="${CFLAGS_RCB_OPT}" rcb ${MAINFILE}
 
 debug:
-	${CC} ${CFLAGS_OWN} -g -I ${INCLUDES} httpserver.c ${INCFILES} ${LINKLIBS} ${CFLAGS} -o ${OUTFILE}-$@
+	CFLAGS="${CFLAGS_RCB_DBG}" rcb ${MAINFILE}
 
 
 .PHONY: all optimized debug

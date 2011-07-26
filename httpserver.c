@@ -30,14 +30,11 @@
 #include <grp.h>
 
 #include "../rocksock/rocksockserver.h"
-#include "../lib/stringptr.h"
-#include "../lib/strlib.h"
-#include "../lib/optparser.h"
-
-//RcB: DEP "../lib/stringptr.c"
-//RcB: DEP "../lib/strlib.c"
-//RcB: DEP "../lib/optparser.c"
-//RcB: DEP "../rocksock/rocksockserver.c"
+#include "../lib/include/stringptr.h"
+#include "../lib/include/strlib.h"
+#include "../lib/include/filelib.h"
+#include "../lib/include/optparser.h"
+#include "../lib/include/logger.h"
 
 static const char content_type_text_html[] = "text/html";
 static const char content_type_text_plain[] = "text/plain";
@@ -195,24 +192,24 @@ const char* httpserver_get_contenttype(char* filename, char* fileext) {
 
 __attribute__ ((noreturn))
 void httpserver_handle_pathbuf_size(void) {
-	fprintf(stderr, "%s", "FATAL: filename on tempfs exceeding 256 bytes\n");
+	ulz_fprintf(2, "%s", "FATAL: filename on tempfs exceeding 256 bytes\n");
 	exit(1);
 }
 
 char* httpserver_get_client_requeststream_fn(httpserver* self, int client) {
-	if(snprintf(self->pathbuf, sizeof(self->pathbuf), "%s/%d.requ", self->workdir.ptr, client) >= (int) sizeof(self->pathbuf))
+	if(ulz_snprintf(self->pathbuf, sizeof(self->pathbuf), "%s/%d.requ", self->workdir.ptr, client) >= (int) sizeof(self->pathbuf))
 		httpserver_handle_pathbuf_size();
 	return self->pathbuf;
 }
 
 char* httpserver_get_client_responsestream_fn(httpserver* self, int client) {
-	if(snprintf(self->pathbuf, sizeof(self->pathbuf), "%s/%d.resp", self->workdir.ptr, client) >= (int) sizeof(self->pathbuf))
+	if(ulz_snprintf(self->pathbuf, sizeof(self->pathbuf), "%s/%d.resp", self->workdir.ptr, client) >= (int) sizeof(self->pathbuf))
 		httpserver_handle_pathbuf_size();
 	return self->pathbuf;
 }
 
 char* httpserver_get_client_infostream_fn(httpserver* self, int client) {
-	if(snprintf(self->pathbuf, sizeof(self->pathbuf), "%s/%d.info", self->workdir.ptr, client) >= (int) sizeof(self->pathbuf))
+	if(ulz_snprintf(self->pathbuf, sizeof(self->pathbuf), "%s/%d.info", self->workdir.ptr, client) >= (int) sizeof(self->pathbuf))
 		httpserver_handle_pathbuf_size();
 	return self->pathbuf;
 }
@@ -231,9 +228,9 @@ int httpserver_disconnect_client(httpserver* self, int client, int doclose) {
 #endif
 	if(doclose != -1 && self->log)
 #ifdef DISCONNECT_DEBUG
-		fprintf(stdout, "[%d] disconnecting client (%s.%s:%d) - forced: %d\n", client, file, function, line, doclose);
+		ulz_fprintf(1, "[%d] disconnecting client (%s.%s:%d) - forced: %d\n", client, file, function, line, doclose);
 #else
-		fprintf(stdout, "[%d] disconnecting client - forced: %d\n", client, doclose);
+		ulz_fprintf(1, "[%d] disconnecting client - forced: %d\n", client, doclose);
 #endif
 	if(self->clients[client].responsestream_header) {
 		fclose(self->clients[client].responsestream_header);
@@ -297,12 +294,12 @@ int httpserver_on_clientconnect (void* userdata, struct sockaddr_storage* client
 		fclose(info);
 		if(fail) {
 			if(self->log)
-				fprintf(stdout, "[%d] error writing info file\n", fd);
+				ulz_fprintf(1, "[%d] error writing info file\n", fd);
 			close(fd);
 			return -3;
 		}
 		if(self->log)
-			fprintf(stdout, "[%d] Connect from %s\n", fd, self->buffer);
+			ulz_fprintf(1, "[%d] Connect from %s\n", fd, self->buffer);
 	}
 	
 	return 0;
@@ -542,7 +539,7 @@ int httpserver_deliver(httpserver* self, int client, clientrequest* req) {
 	if(!memcmp(fe, "pl", 2) || !memcmp(fe, "cgi", 3)) {
 		if(access(self->pathbuf, X_OK) == -1) {
 			if(self->log)
-				fprintf(stdout, "[%d] script %s not executable\n", client, self->pathbuf);
+				ulz_fprintf(1, "[%d] script %s not executable\n", client, self->pathbuf);
 			respond(err404, err404l, 2);
 		}	
 		st = ST_PERL;
@@ -550,7 +547,7 @@ int httpserver_deliver(httpserver* self, int client, clientrequest* req) {
 		runscript:
 		ret = httpserver_spawn(self, self->pathbuf, client, st);
 		if(ret && self->log)
-			fprintf(stdout, "[%d] script %s returned error code %d\n", client, self->pathbuf, ret);
+			ulz_fprintf(1, "[%d] script %s returned error code %d\n", client, self->pathbuf, ret);
 		respond(NULL, 0, 0);
 		
 	} else {
@@ -558,7 +555,7 @@ int httpserver_deliver(httpserver* self, int client, clientrequest* req) {
 		if(len > sizeof(self->buffer))
 			httpserver_turbomode(self, client);
 		self->clients[client].responsestream = fopen(self->pathbuf, "r");
-		respond(self->buffer, snprintf(self->buffer, sizeof(self->buffer), err200, httpserver_get_contenttype(self->pathbuf, fe), (int) len), 0);
+		respond(self->buffer, ulz_snprintf(self->buffer, sizeof(self->buffer), err200, httpserver_get_contenttype(self->pathbuf, fe), (int) len), 0);
 	}
 	
 #undef respond
@@ -566,20 +563,20 @@ int httpserver_deliver(httpserver* self, int client, clientrequest* req) {
 	writeheader:
 	if(self->log) {
 		if(rh == err500)
-			fprintf(stdout, "[%d] 500.\n", client);
+			ulz_fprintf(1, "[%d] 500.\n", client);
 		else if(rh == err404)
-			fprintf(stdout, "[%d] 404 %s\n", client, req->uri);
+			ulz_fprintf(1, "[%d] 404 %s\n", client, req->uri);
 		else
-			fprintf(stdout, "[%d] 200 %s\n", client, req->uri);
+			ulz_fprintf(1, "[%d] 200 %s\n", client, req->uri);
 	}
 	if(!(self->clients[client].responsestream_header = fopen(httpserver_get_client_responsestream_fn(self, client), rh ? "w+" : "r+"))) {
-		puts(httpserver_get_client_responsestream_fn(self, client));
-		perror("failed to open response file");
+		ulz_fprintf(1, "%s\n", httpserver_get_client_responsestream_fn(self, client));
+		log_perror("failed to open response file");
 	}
 	if(rh)
 		if(fwrite(rh, 1, rl, self->clients[client].responsestream_header) != rl) {
 			if(self->log)
-				fprintf(stdout, "[%d] error writing to response file\n", client);
+				ulz_fprintf(1, "[%d] error writing to response file\n", client);
 			_httpserver_disconnect_client(self, client, 1);
 		}
 
@@ -607,7 +604,7 @@ int httpserver_on_clientread (void* userdata, int fd, size_t nread) {
 			self->clients[fd].requestsize += nread;
 			if(fwrite(self->buffer, 1, nread, self->clients[fd].requeststream) != nread) {
 				if(self->log) 
-					fprintf(stdout, "[%d] error writing to response file\n", fd);
+					ulz_fprintf(1, "[%d] error writing to response file\n", fd);
 				_httpserver_disconnect_client(self, fd, 1);
 			}
 			ret = httpserver_request_header_complete(self, fd, &req);
@@ -657,7 +654,7 @@ int httpserver_init(httpserver* srv, char* listenip, short port, const char* wor
 		perror("setuid");
 
 	// set up a temporary dir with 0700, and unpredictable name
-	snprintf(srv->tempdir, sizeof(srv->tempdir), "%s/XXXXXX", workdir);
+	ulz_snprintf(srv->tempdir, sizeof(srv->tempdir), "%s/XXXXXX", workdir);
 	if(!mkdtemp(srv->tempdir)) {
 		perror("mkdtemp");
 		exit(1);
@@ -672,26 +669,26 @@ int httpserver_init(httpserver* srv, char* listenip, short port, const char* wor
 
 __attribute__ ((noreturn))
 void syntax(opts* opt) {
-	puts("progname -srvroot=/srv/htdocs -tempfs=/dev/shm/ -listenip=0.0.0.0 -port=80 -timeout=30 -log=0 -uid=0 -gid=0");
-	puts("all options except tempfs and srvroot are optional");
-	printf("passed options were:\n");
-	op_printAll(opt);
-	op_freeOpts(opt);
+	ulz_printf("progname -srvroot=/srv/htdocs -tempfs=/dev/shm/ -listenip=0.0.0.0 -port=80 -timeout=30 -log=0 -uid=0 -gid=0\n");
+	ulz_printf("all options except tempfs and srvroot are optional\n");
+	ulz_printf("passed options were:\n");
+	op_printall(opt);
+	op_free(opt);
 	exit(1);
 }
 
 int main(int argc, char** argv) {
 	httpserver srv;
 	static const char defaultip[] = "127.0.0.1";
-	opts* opt = op_parseOpts(argc, argv);
-	stringptr* o_srvroot = op_getOpt(opt, "srvroot");
-	stringptr* o_tempfs = op_getOpt(opt, "tempfs");
-	stringptr* o_port = op_getOpt(opt, "port");
-	stringptr* o_listenip = op_getOpt(opt, "listenip");
-	stringptr* o_timeout = op_getOpt(opt, "timeout");
-	stringptr* o_log = op_getOpt(opt, "log");
-	stringptr* o_uid = op_getOpt(opt, "uid");
-	stringptr* o_gid = op_getOpt(opt, "gid");
+	opts* opt = op_parse(argc, argv);
+	stringptr* o_srvroot = op_get(opt, "srvroot");
+	stringptr* o_tempfs = op_get(opt, "tempfs");
+	stringptr* o_port = op_get(opt, "port");
+	stringptr* o_listenip = op_get(opt, "listenip");
+	stringptr* o_timeout = op_get(opt, "timeout");
+	stringptr* o_log = op_get(opt, "log");
+	stringptr* o_uid = op_get(opt, "uid");
+	stringptr* o_gid = op_get(opt, "gid");
 	
 	int log = o_log ? atoi(o_log->ptr) : 1;
 	int timeout = o_timeout ? atoi(o_timeout->ptr) : 30;
@@ -702,7 +699,7 @@ int main(int argc, char** argv) {
 	
 	httpserver_init(&srv, ip, port, o_tempfs->ptr, o_srvroot->ptr, log, timeout, o_uid ? atoi(o_uid->ptr) : -1, o_gid ? atoi(o_gid->ptr) : -1);
 	
-	op_freeOpts(opt);
+	op_free(opt);
 	return 0;
 }
 

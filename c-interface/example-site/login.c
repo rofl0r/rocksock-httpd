@@ -1,7 +1,6 @@
 #include <stdio.h>
 #include "../RSScript.h"
-#include "../../../lib/stringptr.h"
-//RcB: DEP "../RSScript.c"
+#include "../../../lib/include/stringptr.h"
 
 int main(int argc, char** argv) {
 	
@@ -17,7 +16,7 @@ int main(int argc, char** argv) {
 	(void) req;
 	
 	if(kv_find(req->formdata, SPLITERAL("user"), (void**) &u) && kv_find(req->formdata, SPLITERAL("pass"), (void**) &p) && 
-		streq(u, username) && streq(p, password)
+		stringptr_eq(u, username) && stringptr_eq(p, password)
 	) {
 		rss_make_auth_cookie(s);
 		rss_redirect_soft(s, SPLITERAL("/main.cgi"));

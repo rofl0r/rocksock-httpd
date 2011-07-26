@@ -1,7 +1,6 @@
 #include <stdio.h>
 #include "../RSScript.h"
-#include "../../../lib/stringptr.h"
-//RcB: DEP "../RSScript.c"
+#include "../../../lib/include/stringptr.h"
 
 int main(int argc, char** argv) {
 	RSScript ss, *s = &ss;

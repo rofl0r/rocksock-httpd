@@ -12,13 +12,8 @@
 
 #include "RSScript.h"
 
-#include "../../lib/strlib.h"
-#include "../../lib/fileparser.h"
-
-//RcB: DEP "../../lib/stringptr.c"
-//RcB: DEP "../../lib/strlib.c"
-//RcB: DEP "../../lib/kvlist.c"
-//RcB: DEP "../../lib/fileparser.c"
+#include "../../lib/include/strlib.h"
+#include "../../lib/include/fileparser.h"
 
 #ifndef IN_KDEVELOP_PARSER
 //static const stringptr* failed_handle_msg = SPLITERAL("failed to get filehandle");
@@ -35,7 +30,7 @@ static const char RSS_EOUTOFMEM[] = "out of memory";
 
 __attribute__ ((noreturn))
 static void die(const char* s) {
-	puts(s);
+	ulz_fprintf(2, "%s\n", s);
 	exit(1);
 }
 
@@ -46,12 +41,12 @@ void rss_init(RSScript* script, int argc, char** argv) {
 		die("invalid argument count");
 	}
 #ifdef DEBUG
-	stringptr* dump = readfile(argv[1]);
+	stringptr* dump = stringptr_fromfile(argv[1]);
 	if(!dump) {
 		die("ERROR, req file not found or unable to read");
 	}
-	writefile("last.req", dump);
-	free_string(dump);
+	stringptr_tofile("last.req", dump);
+	stringptr_free(dump);
 #endif
 	memset(script, 0, sizeof(RSScript));
 	script->request_fn = argv[1];
@@ -63,7 +58,7 @@ void rss_init(RSScript* script, int argc, char** argv) {
 	script->req.getparams = kv_new(8);
 	script->req.cookies = kv_new(8);
 	script->info = kv_new(8);
-	script->response_lines = new_stringptrlist(255);
+	script->response_lines = stringptrlist_new(255);
 }
 
 static void my_kv_free(kvlist* l) {
@@ -73,7 +68,7 @@ static void my_kv_free(kvlist* l) {
 	for(i = 0; i < l->size; i++) {
 		if((t = kv_get(l, i))) {
 			free(t->ptr);
-			if(t->value) free_string((stringptr*) t->value);
+			if(t->value) stringptr_free((stringptr*) t->value);
 		}
 	}
 	free(l);
@@ -87,10 +82,10 @@ void rss_free(RSScript* script) {
 	my_kv_free(script->req.getparams);
 	my_kv_free(script->req.cookies);
 	my_kv_free(script->info);
-	if(script->req.upload_fn) free_string(script->req.upload_fn);
-	if(script->req.uri) free_string(script->req.uri);
+	if(script->req.upload_fn) stringptr_free(script->req.upload_fn);
+	if(script->req.uri) stringptr_free(script->req.uri);
 	for(i = 0; i < script->response_lines->size; i++)
-		if((temp = getlistitem(script->response_lines, i)))
+		if((temp = stringptrlist_get(script->response_lines, i)))
 			free(temp->ptr);
 		
 	//if(script->response_contenttype) free(script->response_contenttype); //conttenttype is managed by caller and most likely a SPLITERAL
@@ -98,7 +93,7 @@ void rss_free(RSScript* script) {
 
 stringptr* url_encode(stringptr* url) {
 	if(!url) return NULL;
-	stringptr* result = new_string(url->size * 3);
+	stringptr* result = stringptr_new(url->size * 3);
 	if(!result) return NULL;
 	result->size = 0;
 	size_t i;
@@ -107,7 +102,7 @@ stringptr* url_encode(stringptr* url) {
 			result->ptr[i] = url->ptr[i];
 			result->size++;
 		} else {
-			sprintf(result->ptr + result->size, "%%%02X", url->ptr[i]);
+			ulz_snprintf(result->ptr + result->size, 4, "%%%.2X", url->ptr[i]);
 			result->size += 3;
 		}
 	}
@@ -116,7 +111,7 @@ stringptr* url_encode(stringptr* url) {
 
 stringptr* url_decode(stringptr* url) {
 	if(!url) return NULL;
-	stringptr* result = new_string(url->size);
+	stringptr* result = stringptr_new(url->size);
 	if(!result) return NULL;
 	result->size = 0;
 	size_t i;
@@ -189,7 +184,7 @@ void rss_read_request(RSScript* script) {
 				save = 0;
 			}
 			line->size = pos2 - pos;
-			script->req.uri = copy_string(line);
+			script->req.uri = stringptr_copy(line);
 			*s1 = save;
 			if(*s1 == '?' && s1 < max && *(++s1)) {
 				line->ptr = s1;
@@ -201,16 +196,16 @@ void rss_read_request(RSScript* script) {
 						if((kv = stringptr_splitc(rp, '&'))) {
 							for(k = 0; k < kv->size; k++) {
 								stringptr* baz;
-								if((baz = getlistitem(kv, k)) && (kv2 = stringptr_splitc(baz, '='))) {
-									if((key = getlistitem(kv2, 0)) && (val = getlistitem(kv2, 1)) && (s1 = stringptr_strdup(key))) {
-										kv_add(&script->req.getparams, s1, key->size, copy_string(val));
+								if((baz = stringptrlist_get(kv, k)) && (kv2 = stringptr_splitc(baz, '='))) {
+									if((key = stringptrlist_get(kv2, 0)) && (val = stringptrlist_get(kv2, 1)) && (s1 = stringptr_strdup(key))) {
+										kv_add(&script->req.getparams, s1, key->size, stringptr_copy(val));
 									}
 									free(kv2);
 								}
 							}
 							free(kv);
 						}
-						free_string(rp);
+						stringptr_free(rp);
 					}
 				}
 			}
@@ -220,17 +215,17 @@ void rss_read_request(RSScript* script) {
 		line->size = p->len;
 		if(i && !doneheader) {
 			if((kv = stringptr_splits(line, SPLITERAL(": ")))) {
-				val = getlistitem(kv, 1);
-				if((key = getlistitem(kv, 0))) {
-					if(stringhere(key, 0, SPLITERAL("Cookie"))) {
+				val = stringptrlist_get(kv, 1);
+				if((key = stringptrlist_get(kv, 0))) {
+					if(stringptr_here(key, 0, SPLITERAL("Cookie"))) {
 						if(val && (kv2 = stringptr_splitc(val, ';'))) {
 							for(k = 0; k < kv2->size; k++) {
-								if((key = getlistitem(kv2, k)) && key->size) {
+								if((key = stringptrlist_get(kv2, k)) && key->size) {
 									if(key->ptr[0] == ' ') stringptr_shiftright(key, 1);
 									if((kv3 = stringptr_splitc(key, '='))) {
-										if((key = getlistitem(kv3, 0)) && (val = getlistitem(kv3, 1))) {
+										if((key = stringptrlist_get(kv3, 0)) && (val = stringptrlist_get(kv3, 1))) {
 											if((s1 = stringptr_strdup(key))) {
-												kv_add(&script->req.cookies, s1, key->size, copy_string(val));
+												kv_add(&script->req.cookies, s1, key->size, stringptr_copy(val));
 											}
 										}
 										free(kv3);
@@ -241,7 +236,7 @@ void rss_read_request(RSScript* script) {
 						}
 					} else {
 						if((s1 = stringptr_strdup(key))) {
-							kv_add(&script->req.reqdata, s1, key->size, val ? copy_string(val) : NULL);
+							kv_add(&script->req.reqdata, s1, key->size, val ? stringptr_copy(val) : NULL);
 						}
 					}
 				}
@@ -249,16 +244,16 @@ void rss_read_request(RSScript* script) {
 			}
 		} else if (doneheader == 1) {
 			if(script->req.meth == RM_POST && kv_find(script->req.reqdata, SPLITERAL("Content-Type"), (void**) &key)) {
-				if(stringhere(key, 0, SPLITERAL("application/x-www-form-urlencoded"))) {
+				if(stringptr_here(key, 0, SPLITERAL("application/x-www-form-urlencoded"))) {
 				//if(strstr(key->ptr, "form-urlencoded")) {
 					if((kv = stringptr_splitc(line, '&'))) {
 						for(k = 0; k < kv->size; k++) {
-							if((key = getlistitem(kv, k)) && (kv2 = stringptr_splitc(key, '='))) {
-								if((key = getlistitem(kv2, 0)) && (rp = url_decode(key))) {
-									 val = getlistitem(kv2, 1);
+							if((key = stringptrlist_get(kv, k)) && (kv2 = stringptr_splitc(key, '='))) {
+								if((key = stringptrlist_get(kv2, 0)) && (rp = url_decode(key))) {
+									 val = stringptrlist_get(kv2, 1);
 									 if((s1 = stringptr_strdup(rp)))
 										kv_add(&script->req.formdata, s1, rp->size, val ? url_decode(val) : NULL);
-									 free_string(rp);
+									 stringptr_free(rp);
 								}
 								free(kv2);
 							}
@@ -272,7 +267,7 @@ void rss_read_request(RSScript* script) {
 							s1++;
 						*s1 = 0;
 						key->size = s1 - key->ptr;
-						script->req.boundary = copy_string(key);
+						script->req.boundary = stringptr_copy(key);
 					}
 					doneheader = 2;
 				} else
@@ -288,7 +283,7 @@ void rss_read_request(RSScript* script) {
 					s1++;
 				*s1 = 0;
 				line->size = s1 - line->ptr;
-				script->req.upload_fn = copy_string(line);
+				script->req.upload_fn = stringptr_copy(line);
 				doneheader = 3;
 			}
 		} else if (doneheader == 3) {
@@ -310,7 +305,7 @@ void rss_write_attachment(RSScript* script, stringptr* outname) {
 	char buf[1024];
 	if(!outname && (!script->req.upload_fn || !script->req.upload_fn->size)) return;
 	if(!outname && strstr(script->req.upload_fn->ptr, "..")) {
-		puts("directory traversal try detected");
+		ulz_fprintf(2, "directory traversal try detected\n");
 		return;
 	}
 	if (!outname) outname = script->req.upload_fn;
@@ -357,8 +352,8 @@ void rss_read_info(RSScript* script) {
 			stringptr_chomp(line);
 			if(!line->size) continue;
 			if((kv = stringptr_splits(line, SPLITERAL(": ")))) {
-				if((key = getlistitem(kv, 0)) && (value = getlistitem(kv, 1)) && key->size && (c = stringptr_strdup(key)))
-					kv_add(&script->info, c, key->size, copy_string(value));
+				if((key = stringptrlist_get(kv, 0)) && (value = stringptrlist_get(kv, 1)) && key->size && (c = stringptr_strdup(key)))
+					kv_add(&script->info, c, key->size, stringptr_copy(value));
 			}
 		}
 		fileparser_close(p);
@@ -395,9 +390,9 @@ int rss_is_cookie_authed(RSScript* script) {
 		while(!fileparser_readline(p) && !fileparser_getline(p, line)) {
 			stringptr_chomp(line);
 			if((kv = stringptr_splitc(line, '|'))) {
-				if((key = getlistitem(kv, 0)) && (val = getlistitem(kv, 1))) {
+				if((key = stringptrlist_get(kv, 0)) && (val = stringptrlist_get(kv, 1))) {
 					timeout = atol(key->ptr);
-					if(streq(s, val) && timeout > time(NULL)) {
+					if(stringptr_eq(s, val) && timeout > time(NULL)) {
 						res = 1;
 						goto finish;
 					}
@@ -413,10 +408,10 @@ int rss_is_cookie_authed(RSScript* script) {
 
 // generates a 64bit random cookie for auth
 stringptr* rss_create_auth_cookie(RSScript* script) {
-	stringptr* res = new_string(16);
+	stringptr* res = stringptr_new(16);
 	if(!res) return NULL;
 	(void) script;
-	snprintf(res->ptr, 17, "%.2X%.2X%.2X%.2X%.2X%.2X%.2X%.2X", 
+	ulz_snprintf(res->ptr, 17, "%.2X%.2X%.2X%.2X%.2X%.2X%.2X%.2X", 
 		 rand() % 256, rand() % 256, rand() % 256, rand() % 256,
 		 rand() % 256, rand() % 256, rand() % 256, rand() % 256);
 	return res;
@@ -428,10 +423,10 @@ static int rss_add_authed_cookie(RSScript* script, stringptr* cookie) {
 	kvlist* lcookie;
 	size_t i;
 	if(!cookie || !(lcookie = kv_new(8))) return 0;
-	kv_add(&lcookie, strdup("name"), 4, copy_string(SPLITERAL("auth")));
+	kv_add(&lcookie, strdup("name"), 4, stringptr_copy(SPLITERAL("auth")));
 	kv_add(&lcookie, strdup("value"), 5, cookie);
-	kv_add(&lcookie, strdup("Max-Age"), 7, copy_string((stringptr*)authtimeoutsecs_as_str));
-	kv_add(&lcookie, strdup("Path"), 4, copy_string(SPLITERAL("/")));
+	kv_add(&lcookie, strdup("Max-Age"), 7, stringptr_copy((stringptr*)authtimeoutsecs_as_str));
+	kv_add(&lcookie, strdup("Path"), 4, stringptr_copy(SPLITERAL("/")));
 	for(i = 0; i < lcookie->size; i++)
 		if((test = kv_get(lcookie, i)) && (!test->ptr || !test->value))
 			die(RSS_EOUTOFMEM);
@@ -457,10 +452,10 @@ static void rss_set_cookie_authdb_entry(RSScript* script, stringptr* authcookie)
 		while((!fileparser_readline(p)) && (!fileparser_getline(p, fc))) {
 			stringptr_chomp(fc);
 			if((kv = stringptr_splitc(fc, '|'))) {
-				if((timeout = getlistitem(kv, 0)) && (fcookie = getlistitem(kv,1))) {
-					if(streq(authcookie, fcookie)) {
+				if((timeout = stringptrlist_get(kv, 0)) && (fcookie = stringptrlist_get(kv,1))) {
+					if(stringptr_eq(authcookie, fcookie)) {
 						writeself:
-						fwrite(buf, 1, snprintf(buf, sizeof(buf), "%ld|", time(NULL) + authtimeoutsecs), tmp);
+						fwrite(buf, 1, ulz_snprintf(buf, sizeof(buf), "%ld|", time(NULL) + authtimeoutsecs), tmp);
 						fwrite(authcookie->ptr, 1, authcookie->size, tmp);
 						done = 1;
 					} else {
@@ -578,7 +573,7 @@ void rss_submit(RSScript* script) {
 		fwrite("; ", 1, 2, out);
 		for(j = 0; j < kv->size; j++) {
 			a = kv_get(kv, j);
-			if(streq((stringptr*) a, SPLITERAL("name")) || streq((stringptr*) a, SPLITERAL("value"))) continue;
+			if(stringptr_eq((stringptr*) a, SPLITERAL("name")) || stringptr_eq((stringptr*) a, SPLITERAL("value"))) continue;
 			fwrite(a->ptr, 1, a->size, out);
 			if(a->value) {
 				fwrite("=", 1, 1, out);
@@ -589,9 +584,9 @@ void rss_submit(RSScript* script) {
 		fwrite(rn, 1, 2, out);
 	}
 	fwrite("Content-Length: ", 1, 16, out);
-	fwrite(buf, 1, snprintf(buf, sizeof(buf), "%zu\r\n\r\n", script->response_len), out);
+	fwrite(buf, 1, ulz_snprintf(buf, sizeof(buf), "%zu\r\n\r\n", script->response_len), out);
 	for(i = 0; i < script->response_lines->size; i++) {
-		if((which = getlistitem(script->response_lines, i)))
+		if((which = stringptrlist_get(script->response_lines, i)))
 			fwrite(which->ptr, 1, which->size, out);
 	}
 	fclose(out);
@@ -627,7 +622,7 @@ void rss_respond_quick(RSScript* script, stringptr* err) {
 }
 
 void rss_respond500(RSScript* script) {
-	stringptr* err = SPLITERAL("HTTP/1.1 500 Wanna fool me?\r\nContent-Type: text/html\r\nContent-Length: 2\r\n\r\nFU");
+	stringptr* err = SPLITERAL("HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/html\r\nContent-Length: 3\r\n\r\n500");
 	rss_respond_quick(script, err);
 }
 

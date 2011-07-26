@@ -3,9 +3,9 @@
 
 #include <stddef.h>
 
-#include "../../lib/kvlist.h"
-#include "../../lib/stringptr.h"
-#include "../../lib/stringptrlist.h"
+#include "../../lib/include/kvlist.h"
+#include "../../lib/include/stringptr.h"
+#include "../../lib/include/stringptrlist.h"
 
 typedef enum {
 	RM_GET,
@@ -67,3 +67,5 @@ void rss_respond500(RSScript* script);
 void rss_respond404(RSScript* script);
 
 #endif
+
+//RcB: DEP "RSScript.c"

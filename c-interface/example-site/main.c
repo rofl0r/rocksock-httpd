@@ -1,7 +1,6 @@
 #include <stdio.h>
 #include "../RSScript.h"
-#include "../../../lib/stringptr.h"
-//RcB: DEP "../RSScript.c"
+#include "../../../lib/include/stringptr.h"
 
 int main(int argc, char** argv) {
 	stringptr* html = SPLITERAL("<HTML>\n<BODY>\n<A HREF=\"/upload.html\">upload a file</A>\n<A HREF=\"/form.html\">test form</A>\n</BODY>\n</HTML>");

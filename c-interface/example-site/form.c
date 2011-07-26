@@ -1,7 +1,6 @@
 #include <stdio.h>
 #include "../RSScript.h"
-#include "../../../lib/stringptr.h"
-//RcB: DEP "../RSScript.c"
+#include "../../../lib/include/stringptr.h"
 
 int main(int argc, char** argv) {
 	RSScript ss, *s = &ss;
@@ -22,8 +21,8 @@ int main(int argc, char** argv) {
 	
 	if((kv_find(req->formdata, SPLITERAL("list"), (void**) &x))) {
 		y = stringptr_replace(x, SPLITERAL("\r"), SPLITERAL(""));
-		writefile("/tmp/testfile", y);
-		free_string(y);
+		stringptr_tofile("/tmp/testfile", y);
+		stringptr_free(y);
 		rss_redirect_soft(s, SPLITERAL("main.cgi"));
 	} else
 		rss_respond500(s);
