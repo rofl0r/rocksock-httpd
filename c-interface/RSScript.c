@@ -14,6 +14,7 @@
 
 #include "../../lib/include/strlib.h"
 #include "../../lib/include/fileparser.h"
+#include "../../lib/include/logger.h"
 
 #ifndef IN_KDEVELOP_PARSER
 //static const stringptr* failed_handle_msg = SPLITERAL("failed to get filehandle");
@@ -29,8 +30,9 @@ static int authtimeoutsecs = 30 * 60;
 static const char RSS_EOUTOFMEM[] = "out of memory";
 
 __attribute__ ((noreturn))
-static void die(const char* s) {
-	ulz_fprintf(2, "%s\n", s);
+static void die(const char* s, int doperror) {
+	if(doperror) log_perror((char*)s);
+	else ulz_fprintf(2, "%s\n", s);
 	exit(1);
 }
 
@@ -38,12 +40,12 @@ void rss_init(RSScript* script, int argc, char** argv) {
 	srand(time(NULL));
 	umask(S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH); // umask _removes_ the bits. 
 	if(argc < 4) {
-		die("invalid argument count");
+		die("invalid argument count", 0);
 	}
 #ifdef DEBUG
 	stringptr* dump = stringptr_fromfile(argv[1]);
 	if(!dump) {
-		die("ERROR, req file not found or unable to read");
+		die("ERROR, req file not found or unable to read", 1);
 	}
 	stringptr_tofile("last.req", dump);
 	stringptr_free(dump);
@@ -150,7 +152,7 @@ void rss_read_request(RSScript* script) {
 	char save;
 	stringptr* rp, *key, *val;
 	stringptrlist* kv, *kv2, *kv3;
-	if(fileparser_open(p, script->request_fn)) die("file access");
+	if(fileparser_open(p, script->request_fn)) die("file access", 1);
 	while(!fileparser_readline(p)) {
 		if(!doneheader)
 			script->req.headersize += p->len + 1; // + cut off '\n' at the end
@@ -431,7 +433,7 @@ static int rss_add_authed_cookie(RSScript* script, stringptr* cookie) {
 	kv_add(&lcookie, strdup("Path"), 4, stringptr_copy(SPLITERAL("/")));
 	for(i = 0; i < lcookie->size; i++)
 		if((test = kv_get(lcookie, i)) && (!test->ptr || !test->value))
-			die(RSS_EOUTOFMEM);
+			die(RSS_EOUTOFMEM, 0);
 	rss_set_cookie(script, lcookie);
 	return 1;
 }
@@ -446,9 +448,9 @@ static void rss_set_cookie_authdb_entry(RSScript* script, stringptr* authcookie)
 	char tmpname[24];
 	int done = 0;
 
-	if(tempfile_template->size + 1 > sizeof(tmpname)) die("temp filename exceeds bufsize");
+	if(tempfile_template->size + 1 > sizeof(tmpname)) die("temp filename exceeds bufsize", 0);
 	memcpy(tmpname, tempfile_template->ptr, tempfile_template->size+1);
-	if((temp = mkstemp(tmpname)) == 1 || !(tmp = fdopen(temp, "w"))) die("cannot make tempfile");
+	if((temp = mkstemp(tmpname)) == 1 || !(tmp = fdopen(temp, "w"))) die("cannot make tempfile", 1);
 	if((fileparser_open(p, authcookiedb->ptr))) p = NULL;
 	if(p) {
 		while((!fileparser_readline(p)) && (!fileparser_getline(p, fc))) {
@@ -487,7 +489,7 @@ void rss_set_cookie_authed(RSScript* script, stringptr* cookie) {
 	rss_http_request* req;
 	if(!cookie) {
 		req = rss_get_request(script);
-		if(!kv_find(req->cookies, SPLITERAL("auth"), (void**) &authcookie)) die("authcookie not set!");
+		if(!kv_find(req->cookies, SPLITERAL("auth"), (void**) &authcookie)) die("authcookie not set!", 0);
 	} else 
 		authcookie = cookie;	
 	rss_set_cookie_authdb_entry(script, authcookie);
@@ -524,7 +526,7 @@ void rss_set_responsetype(RSScript* script, int rt) {
 			script->response_err = rt;
 			break;
 		default:
-			die("unimplemented responsetype");
+			die("unimplemented responsetype", 0);
 	}
 }
 
@@ -536,11 +538,16 @@ void rss_set_contenttype(RSScript* script, stringptr* ct) {
 
 void rss_respond(RSScript* script, stringptr* msg) {
 	char* p2;
-	if(!script->response_err) die("need to set responsetype before respond()!");
+	if(!script->response_err) die("need to set responsetype before respond()!", 0);
 	if(!msg || !msg->ptr || !msg->size) return;
 	if(!(p2 = stringptr_strdup(msg))) return;
 	if(stringptrlist_add(&script->response_lines, p2, msg->size)) script->response_len += msg->size;
 	return;
+}
+
+static void checked_write(const char* buf, size_t c, size_t n, FILE* f) {
+	if(fwrite(buf, c, n, f) != c * n)
+		die("failed to write response file", 1);
 }
 
 void rss_submit(RSScript* script) {
@@ -557,49 +564,53 @@ void rss_submit(RSScript* script) {
 	stringptrv *a;
 	char buf[24];
 	
-	if(!script->response_err) die("need to set responsetype before respond()!");
+	if(!script->response_err) die("need to set responsetype before respond()!", 0);
+#ifdef DEBUG
+	fprintf(stderr, "opening %s for output\n", script->response_fn);
+#endif
 	FILE *out;
-	if(!(out = fopen(script->response_fn, "w"))) die("failed to open response file");
+	if(!(out = fopen(script->response_fn, "w"))) die("failed to open response file", 1);
 	if(script->response_err == 404 || script->response_err == 500) {
 		if(script->response_err == 404) which = err404;
 		else which = err500;
-		fwrite(which->ptr, 1, which->size, out);
+		checked_write(which->ptr, 1, which->size, out);
 		fclose(out);
 		return;
 	}
 	if(!script->response_contenttype) script->response_contenttype = SPLITERAL("text/html");
-	fwrite(err200->ptr, 1, err200->size, out);
-	fwrite(script->response_contenttype->ptr, 1, script->response_contenttype->size, out);
-	fwrite(rn, 1, 2, out);
+	checked_write(err200->ptr, 1, err200->size, out);
+	checked_write(script->response_contenttype->ptr, 1, script->response_contenttype->size, out);
+	checked_write(rn, 1, 2, out);
 	
 	for(i = 0; i < script->response_cookie_count; i++) {
 		kv = script->response_cookies[i];
-		if(!kv_find(kv, SPLITERAL("name"), (void**)&which) || !kv_find(kv, SPLITERAL("value"), (void**)&val)) die ("cookie without name or value, invalid!");
+		if(!kv_find(kv, SPLITERAL("name"), (void**)&which) || !kv_find(kv, SPLITERAL("value"), (void**)&val)) die ("cookie without name or value, invalid!", 0);
 		rp = url_encode(val);
-		fwrite("Set-Cookie: ", 1, 12, out);
-		fwrite(which->ptr, 1, which->size, out);
-		fwrite("=", 1, 1, out);
-		fwrite(rp->ptr, 1, rp->size, out);
-		fwrite("; ", 1, 2, out);
+		checked_write("Set-Cookie: ", 1, 12, out);
+		checked_write(which->ptr, 1, which->size, out);
+		checked_write("=", 1, 1, out);
+		checked_write(rp->ptr, 1, rp->size, out);
+		checked_write("; ", 1, 2, out);
 		for(j = 0; j < kv->size; j++) {
 			a = kv_get(kv, j);
 			if(stringptr_eq((stringptr*) a, SPLITERAL("name")) || stringptr_eq((stringptr*) a, SPLITERAL("value"))) continue;
-			fwrite(a->ptr, 1, a->size, out);
+			checked_write(a->ptr, 1, a->size, out);
 			if(a->value) {
-				fwrite("=", 1, 1, out);
-				fwrite(((stringptr*)(a->value))->ptr, 1, ((stringptr*)(a->value))->size, out);
+				checked_write("=", 1, 1, out);
+				checked_write(((stringptr*)(a->value))->ptr, 1, ((stringptr*)(a->value))->size, out);
 			}
-			fwrite("; ", 1, 2, out);
+			checked_write("; ", 1, 2, out);
 		}
-		fwrite(rn, 1, 2, out);
+		checked_write(rn, 1, 2, out);
 	}
-	fwrite("Content-Length: ", 1, 16, out);
-	fwrite(buf, 1, ulz_snprintf(buf, sizeof(buf), "%zu\r\n\r\n", script->response_len), out);
+	checked_write("Content-Length: ", 1, 16, out);
+	checked_write(buf, 1, ulz_snprintf(buf, sizeof(buf), "%zu\r\n\r\n", script->response_len), out);
 	for(i = 0; i < script->response_lines->size; i++) {
 		if((which = stringptrlist_get(script->response_lines, i)))
-			fwrite(which->ptr, 1, which->size, out);
+			checked_write(which->ptr, 1, which->size, out);
 	}
 	fclose(out);
+	return;
 }
 
 //since redirect with post data makes browsers ask lame questions about reposting
@@ -610,7 +621,7 @@ void rss_redirect_soft(RSScript* script, stringptr* newloc) {
 	rss_set_contenttype(script, SPLITERAL("text/html"));
 	if((out = stringptr_concat(SPLITERAL("<html><META HTTP-EQUIV=\"Refresh\" CONTENT=\"1;URL="), newloc, SPLITERAL("\"></html>"), NULL)))
 		rss_respond(script, out);
-	else die(RSS_EOUTOFMEM);
+	else die(RSS_EOUTOFMEM, 0);
 	rss_submit(script);
 }
 
@@ -618,7 +629,7 @@ void rss_redirect_hard(RSScript* script, stringptr* newloc) {
 	stringptr* out;
 	if(!newloc) return;
 	FILE* fout;
-	if(!(fout = fopen(script->response_fn, "w"))) die("could not open resp. file");
+	if(!(fout = fopen(script->response_fn, "w"))) die("could not open resp. file", 1);
 	if((out = stringptr_concat(SPLITERAL("HTTP/1.1 307 Moved temporary\r\nLocation: "), newloc, SPLITERAL("\r\nContent-Type: text/html\r\nContent-Length: 3\r\n\r\n307"), NULL)))
 		fwrite(out->ptr, 1, out->size, fout);
 	fclose(fout);
@@ -626,7 +637,7 @@ void rss_redirect_hard(RSScript* script, stringptr* newloc) {
 
 void rss_respond_quick(RSScript* script, stringptr* err) {
 	FILE* fout;
-	if(!(fout = fopen(script->response_fn, "w"))) die("could not open resp. file");
+	if(!(fout = fopen(script->response_fn, "w"))) die("could not open resp. file", 1);
 	fwrite(err->ptr, 1, err->size, fout);
 	fclose(fout);
 }
