@@ -281,7 +281,7 @@ int httpserver_on_clientconnect (void* userdata, struct sockaddr_storage* client
 	
 	if(fd < 0) return -1;
 	if(fd >= USER_MAX_FD) {
-		close(fd);
+		_httpserver_disconnect_client(self, fd, 1);
 		return -2;
 	}
 	// put into nonblocking mode, so that writes will not block the server
@@ -307,7 +307,7 @@ int httpserver_on_clientconnect (void* userdata, struct sockaddr_storage* client
 		if(fail) {
 			if(self->log)
 				ulz_fprintf(1, "[%d] error writing info file\n", fd);
-			close(fd);
+			_httpserver_disconnect_client(self, fd, 1);
 			return -3;
 		}
 		if(self->log)
