@@ -56,6 +56,7 @@ stringptr* rss_create_auth_cookie(RSScript* script);
 void rss_make_auth_cookie(RSScript* script);
 void rss_set_cookie_authed(RSScript* script, stringptr* cookie);
 stringptr* rss_get_ip(RSScript* script);
+stringptr* rss_get_docroot(RSScript* script);
 void rss_set_responsetype(RSScript* script, int rt);
 void rss_set_contenttype(RSScript* script, stringptr* ct);
 void rss_respond(RSScript* script, stringptr* msg);

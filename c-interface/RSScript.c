@@ -243,7 +243,10 @@ void rss_read_request(RSScript* script) {
 				free(kv);
 			}
 		} else if (doneheader == 1) {
-			if(script->req.meth == RM_POST && kv_find(script->req.reqdata, SPLITERAL("Content-Type"), (void**) &key)) {
+			if(script->req.meth == RM_POST && (
+					(kv_find(script->req.reqdata, SPLITERAL("Content-Type"), (void**) &key)) ||
+					(kv_find(script->req.reqdata, SPLITERAL("Content-type"), (void**) &key))
+			)){
 				if(stringptr_here(key, 0, SPLITERAL("application/x-www-form-urlencoded"))) {
 				//if(strstr(key->ptr, "form-urlencoded")) {
 					if((kv = stringptr_splitc(line, '&'))) {
@@ -383,7 +386,6 @@ int rss_is_cookie_authed(RSScript* script) {
 	time_t timeout;
 	int res = 0;
 
-	//if(!script->info->size) rss_read_info(script);
 	if(!(req = rss_get_request(script))) return 0;
 	if(!kv_find(script->req.cookies, SPLITERAL("auth"), (void**)&s)) return 0;
 	if(!fileparser_open(p, authcookiedb->ptr)) {
@@ -502,10 +504,18 @@ void rss_make_auth_cookie(RSScript* script) {
 	rss_set_cookie_authdb_entry(script, cookie);
 }
 
-stringptr* rss_get_ip(RSScript* script) {
+static stringptr* rss_get_info_entry(RSScript* script, stringptr* entry) {
 	if(!script->info->size) rss_read_info(script);
 	stringptr* result;
-	return kv_find(script->info, SPLITERAL("IP"), (void**) &result) ? result : NULL;
+	return kv_find(script->info, entry, (void**) &result) ? result : NULL;
+}
+
+stringptr* rss_get_ip(RSScript* script) {
+	return rss_get_info_entry(script, SPLITERAL("IP"));
+}
+
+stringptr* rss_get_docroot(RSScript* script) {
+	return rss_get_info_entry(script, SPLITERAL("DR"));
 }
 
 void rss_set_responsetype(RSScript* script, int rt) {
