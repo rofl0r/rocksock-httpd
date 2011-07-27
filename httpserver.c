@@ -81,6 +81,7 @@ typedef enum {
 	CLIENT_CONNECTED = 1,
 	CLIENT_READING = 2,
 	CLIENT_WRITING = 4,
+	CLIENT_UPLOADING = 8
 } clientstatus;
 
 typedef enum {
@@ -113,6 +114,7 @@ typedef struct {
 	clientflags flags;
 	FILE* requeststream;
 	size_t requestsize;
+	clientrequest* uploadreq;
 	FILE* responsestream_header;
 	FILE* responsestream;
 	FILE* act_responsestream;
@@ -291,6 +293,7 @@ int httpserver_on_clientconnect (void* userdata, struct sockaddr_storage* client
 	self->numclients++;
 	_httpserver_disconnect_client(self, fd, -1); // make a clean state and delete the files. this is important for the timeout check.
 	self->clients[fd].status = CLIENT_CONNECTED;
+	self->clients[fd].uploadreq = NULL;
 	if(httpserver_get_client_infostream_fn(self, fd) && httpserver_get_client_ip(self, clientaddr) && (info = fopen(self->pathbuf, "w+"))) {
 		if((len = strlen(self->buffer)) && len < sizeof(self->buffer) -1) {
 			self->buffer[len] = '\n';
@@ -367,7 +370,7 @@ int httpserver_on_clientwantsdata (void* userdata, int fd) {
 			}
 			if((size_t) nwritten < nread) fseek(self->clients[fd].act_responsestream, -(nread - nwritten), SEEK_CUR);
 		}
-	} else if ((self->clients[fd].status == CLIENT_CONNECTED || self->clients[fd].status == CLIENT_READING) && 
+	} else if ((self->clients[fd].status != CLIENT_DISCONNECTED) && 
 			(!(rand() % 1000) && httpserver_check_timeout(self, fd))
 		) {
 		_httpserver_disconnect_client(self, fd, 1);
@@ -516,6 +519,13 @@ int httpserver_spawn(httpserver* self, char* script, int client, scripttype styp
 	return ret;
 }
 
+static void free_stream(FILE** f) {
+	if(*f) {
+		fclose(*f);
+		*f = NULL;
+	}
+}
+
 int httpserver_deliver(httpserver* self, int client, clientrequest* req) {
 	static const char err500[] = "HTTP/1.1 500 Fuck you\r\nContent-Type: text/html\r\nContent-Length: 15\r\n\r\n500 - Fuck You.";
 	static const size_t err500l = sizeof(err500);
@@ -531,7 +541,7 @@ int httpserver_deliver(httpserver* self, int client, clientrequest* req) {
 	size_t rl;
 	char* fe;
 	scripttype st = ST_NONE;
-	
+	free_stream(&self->clients[client].requeststream); // otherwise buffers may not be flushed to disk
 	self->clients[client].status = CLIENT_WRITING;
 	httpserver_idlemode(self, client);
 	
@@ -552,7 +562,7 @@ int httpserver_deliver(httpserver* self, int client, clientrequest* req) {
 			if(self->log)
 				ulz_fprintf(1, "[%d] script %s not executable\n", client, self->pathbuf);
 			respond(err404, err404l, 2);
-		}	
+		}
 		st = ST_PERL;
 		goto runscript;
 		runscript:
@@ -596,7 +606,8 @@ int httpserver_deliver(httpserver* self, int client, clientrequest* req) {
 
 int httpserver_on_clientread (void* userdata, int fd, size_t nread) {
 	httpserver* self = (httpserver*) userdata;
-	clientrequest req;
+	clientrequest req, *curreq;
+	int uploadflag = 0;
 	int ret;
 	switch(self->clients[fd].status) {
 		case CLIENT_CONNECTED:
@@ -612,27 +623,48 @@ int httpserver_on_clientread (void* userdata, int fd, size_t nread) {
 			if(!self->clients[fd].requestsize && nread == sizeof(self->buffer))
 				httpserver_turbomode(self, fd);
 			
+			readchunk:
 			self->clients[fd].requestsize += nread;
 			if(fwrite(self->buffer, 1, nread, self->clients[fd].requeststream) != nread) {
 				if(self->log) 
-					ulz_fprintf(1, "[%d] error writing to response file\n", fd);
+					ulz_fprintf(1, "[%d] error writing to request file\n", fd);
 				_httpserver_disconnect_client(self, fd, 1);
+				goto finish;
 			}
-			ret = httpserver_request_header_complete(self, fd, &req);
-			if(!ret) return 0;
-			if(ret == -1) {
-				httpserver_deliver(self, fd, NULL);
-				goto closehandle;
+			if(uploadflag) {
+				curreq = self->clients[fd].uploadreq;
+			} else {
+				curreq = &req;
+				ret = httpserver_request_header_complete(self, fd, &req);
+				if(!ret) return 0;
+				if(ret == -1) {
+					httpserver_deliver(self, fd, NULL);
+					goto finish;
+				}
 			}
-			if(req.rqt == RQT_GET || self->clients[fd].requestsize == req.contentlength + req.streampos)
-				httpserver_deliver(self, fd, &req);
-			else
+			if(curreq->rqt == RQT_GET || self->clients[fd].requestsize == curreq->contentlength + curreq->streampos) {
+				httpserver_deliver(self, fd, curreq);
+				if(uploadflag) {
+					free(self->clients[fd].uploadreq);
+					self->clients[fd].uploadreq = NULL;
+					uploadflag = 0;
+				}
+			} else if(!uploadflag && req.rqt == RQT_POST) {
+				self->clients[fd].status = CLIENT_UPLOADING;
+				self->clients[fd].uploadreq = malloc(sizeof(clientrequest));
+				if(!self->clients[fd].uploadreq) return -1;
+				*(self->clients[fd].uploadreq) = req;
+				uploadflag = 1;
+			} else
 				return 0;
+			finish:
 			if(self->clients[fd].responsestream_header) rewind(self->clients[fd].responsestream_header);
-			closehandle:
-			fclose(self->clients[fd].requeststream);
-			self->clients[fd].requeststream = NULL;
+			if(uploadflag) break;
+			free_stream(&self->clients[fd].requeststream);
 			break;
+		case CLIENT_UPLOADING:
+			uploadflag = 1;
+			goto readchunk;
 		default:
 			return 1;
 	}
