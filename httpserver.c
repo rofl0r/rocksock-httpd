@@ -42,6 +42,7 @@ static const char content_type_binary_octet_stream[] = "binary/octet-stream";
 static const char content_type_image_jpeg[] = "image/jpeg";
 static const char content_type_image_gif[] = "image/gif";
 static const char content_type_image_png[] = "image/png";
+static const char content_type_application_pdf[] = "application/pdf";
 
 
 static const char file_type_htm[] = "htm";
@@ -54,7 +55,7 @@ static const char file_type_jpeg[] = "jpeg";
 static const char file_type_jpg[] = "jpg";
 static const char file_type_png[] = "png";
 static const char file_type_cgi[] = "cgi";
-
+static const char file_type_pdf[] = "pdf";
 
 typedef struct {
 	const char* fileext;
@@ -71,6 +72,7 @@ static const contenttype typemap[] = {
 	{ file_type_jpeg, content_type_image_jpeg },
 	{ file_type_jpg, content_type_image_jpeg },
 	{ file_type_png, content_type_image_png },
+	{ file_type_pdf, content_type_application_pdf },
 	{ NULL, NULL }
 };
 
@@ -145,7 +147,7 @@ void httpserver_turbomode(httpserver* self, int client) {
 		self->turbo++;
 		self->clients[client].flags |= CL_NEEDS_TURBO;
 		rocksockserver_set_sleeptime(&self->serva, 500);
-	}	
+	}
 }
 
 // client connected, but not sending/receiving big amounts of data
@@ -270,6 +272,8 @@ int httpserver_disconnect_client(httpserver* self, int client, int doclose) {
 int httpserver_on_clientconnect (void* userdata, struct sockaddr_storage* clientaddr, int fd) {
 	static const char ip_msg[] = "IP: ";
 	static const size_t ip_msg_l = sizeof(ip_msg) - 1;
+	static const char dr_msg[] = "DR: ";
+	static const size_t dr_msg_l = sizeof(dr_msg) - 1;
 	httpserver* self = (httpserver*) userdata;
 	FILE* info;
 	unsigned fail = 0;
@@ -288,9 +292,17 @@ int httpserver_on_clientconnect (void* userdata, struct sockaddr_storage* client
 	_httpserver_disconnect_client(self, fd, -1); // make a clean state and delete the files. this is important for the timeout check.
 	self->clients[fd].status = CLIENT_CONNECTED;
 	if(httpserver_get_client_infostream_fn(self, fd) && httpserver_get_client_ip(self, clientaddr) && (info = fopen(self->pathbuf, "w+"))) {
-		if(fwrite(ip_msg, 1, ip_msg_l, info) < ip_msg_l) fail = 1;
-		len = strlen(self->buffer); 
-		if(!fail && (fwrite(self->buffer, 1, len, info) != len)) fail = 1;
+		if((len = strlen(self->buffer)) && len < sizeof(self->buffer) -1) {
+			self->buffer[len] = '\n';
+			len++;
+			self->buffer[len] = 0;
+		} else fail = 1;
+		if(!fail && (
+			(fwrite(ip_msg, 1, ip_msg_l, info) < ip_msg_l) ||
+			(fwrite(self->buffer, 1, len, info) < len) ||
+			(fwrite(dr_msg, 1, dr_msg_l, info) < dr_msg_l) ||
+			(fwrite(self->servedir.ptr, 1, self->servedir.size, info) < self->servedir.size)
+		)) fail = 1;
 		fclose(info);
 		if(fail) {
 			if(self->log)
@@ -301,7 +313,6 @@ int httpserver_on_clientconnect (void* userdata, struct sockaddr_storage* client
 		if(self->log)
 			ulz_fprintf(1, "[%d] Connect from %s\n", fd, self->buffer);
 	}
-	
 	return 0;
 }
 
