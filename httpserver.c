@@ -19,6 +19,7 @@
 
 #include <sys/select.h>
 #include <sys/wait.h>
+#include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
 #include <stdint.h>
@@ -105,6 +106,12 @@ typedef struct {
 	clientrequest_inner i;
 	char uri[1024 - sizeof(clientrequest_inner)];
 } clientrequest;
+
+// we allow maximum 8 parallel uploads, for each slot will waste precious 1KB of stack RAM.
+#define SSA_MAXELEM 8
+#define SSA_ELEMSIZE (sizeof(clientrequest))
+#include "../lib/include/ssalloc.c"
+
 
 typedef enum {
 	CL_NONE = 0,
@@ -336,6 +343,7 @@ int httpserver_check_timeout(httpserver* self, int client) {
 	return 0;
 }
 
+// TODO replace this lousy crap. possibly resetting FDs to -1 on read end.
 static int myeof(int fildes) {
 	struct stat buf;
 	int ret2;
@@ -668,13 +676,12 @@ int httpserver_on_clientread (void* userdata, int fd, size_t nread) {
 			if(curreq->i.rqt == RQT_GET || self->clients[fd].requestsize == curreq->i.contentlength + curreq->i.streampos) {
 				httpserver_deliver(self, fd, curreq);
 				if(uploadflag) {
-					free(self->clients[fd].uploadreq);
-					self->clients[fd].uploadreq = NULL;
+					SSNULL(self->clients[fd].uploadreq);
 					uploadflag = 0;
 				}
 			} else if(!uploadflag && req.i.rqt == RQT_POST) {
 				self->clients[fd].status = CLIENT_UPLOADING;
-				self->clients[fd].uploadreq = malloc(sizeof(clientrequest));
+				self->clients[fd].uploadreq = SSALLOC(sizeof(clientrequest));
 				if(!self->clients[fd].uploadreq) return -1;
 				*(self->clients[fd].uploadreq) = req;
 				uploadflag = 1;
@@ -761,7 +768,7 @@ int main(int argc, char** argv) {
 	int port = o_port ? atoi(o_port->ptr) : 80;
 	
 	if(argc < 3 || !o_srvroot || !o_tempfs) syntax(opt);
-	
+	SSINIT;
 	httpserver_init(&srv, ip, port, o_tempfs->ptr, o_srvroot->ptr, log, timeout, o_uid ? atoi(o_uid->ptr) : -1, o_gid ? atoi(o_gid->ptr) : -1);
 	
 	op_free(opt);
