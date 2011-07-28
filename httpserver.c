@@ -236,9 +236,19 @@ char* httpserver_get_client_infostream_fn(httpserver* self, int client) {
 }
 
 char* httpserver_get_client_ip(httpserver* self, struct sockaddr_storage* ip) {
+#ifndef IPV4_ONLY
 	if(ip->ss_family == PF_INET)
 	return (char*) inet_ntop(PF_INET, &((struct sockaddr_in*) ip)->sin_addr, self->buffer, sizeof(self->buffer));
 	else return (char*) inet_ntop(PF_INET6, &((struct sockaddr_in6*) ip)->sin6_addr, self->buffer, sizeof(self->buffer));
+#else
+	if(ulz_snprintf(self->buffer, sizeof(self->buffer), "%d.%d.%d.%d", 
+		     ((unsigned char*)(&((struct sockaddr_in*)ip)->sin_addr))[0],
+		     ((unsigned char*)(&((struct sockaddr_in*)ip)->sin_addr))[1],
+		     ((unsigned char*)(&((struct sockaddr_in*)ip)->sin_addr))[2],
+		     ((unsigned char*)(&((struct sockaddr_in*)ip)->sin_addr))[3]))
+	return self->buffer;
+	return NULL;
+#endif
 }
 
 // doclose: 1: close conn, 0: client already disconnected, -1: init only
@@ -557,7 +567,7 @@ int httpserver_spawn(httpserver* self, char* script, int client, scripttype styp
 }
 
 int httpserver_deliver(httpserver* self, int client, clientrequest* req) {
-	static const char err500[] = "HTTP/1.1 500 Fuck you\r\nContent-Type: text/html\r\nContent-Length: 15\r\n\r\n500 - Fuck You.";
+	static const char err500[] = "HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/html\r\nContent-Length: 28\r\n\r\n500 - Internal Server Error.";
 	static const size_t err500l = sizeof(err500);
 	static const char err404[] = "HTTP/1.1 404 Not found\r\nContent-Type: text/html\r\nContent-Length: 3\r\n\r\n404";
 	static const size_t err404l = sizeof(err404);
@@ -727,7 +737,7 @@ int httpserver_init(httpserver* srv, char* listenip, short port, const char* wor
 
 	// set up a temporary dir with 0700, and unpredictable name
 	ulz_snprintf(srv->tempdir, sizeof(srv->tempdir), "%s/XXXXXX", workdir);
-	if(!mkdtemp(srv->tempdir)) {
+	if(!ulz_mkdtemp(srv->tempdir)) {
 		log_perror("mkdtemp");
 		exit(1);
 	}
@@ -740,38 +750,37 @@ int httpserver_init(httpserver* srv, char* listenip, short port, const char* wor
 }
 
 __attribute__ ((noreturn))
-void syntax(opts* opt) {
+void syntax(op_state* opt) {
 	ulz_printf("progname -srvroot=/srv/htdocs -tempfs=/dev/shm/ -listenip=0.0.0.0 -port=80 -timeout=30 -log=0 -uid=0 -gid=0\n");
 	ulz_printf("all options except tempfs and srvroot are optional\n");
 	ulz_printf("passed options were:\n");
 	op_printall(opt);
-	op_free(opt);
 	exit(1);
 }
 
 int main(int argc, char** argv) {
 	httpserver srv;
 	static const char defaultip[] = "127.0.0.1";
-	opts* opt = op_parse(argc, argv);
-	stringptr* o_srvroot = op_get(opt, "srvroot");
-	stringptr* o_tempfs = op_get(opt, "tempfs");
-	stringptr* o_port = op_get(opt, "port");
-	stringptr* o_listenip = op_get(opt, "listenip");
-	stringptr* o_timeout = op_get(opt, "timeout");
-	stringptr* o_log = op_get(opt, "log");
-	stringptr* o_uid = op_get(opt, "uid");
-	stringptr* o_gid = op_get(opt, "gid");
+	op_state opts, *opt = &opts;
+	op_init(opt, argc, argv);
+	SPDECLAREC(o_srvroot, op_get(opt, SPLITERAL("srvroot")));
+	SPDECLAREC(o_tempfs, op_get(opt, SPLITERAL("tempfs")));
+	SPDECLAREC(o_port, op_get(opt, SPLITERAL("port")));
+	SPDECLAREC(o_listenip, op_get(opt, SPLITERAL("listenip")));
+	SPDECLAREC(o_timeout, op_get(opt, SPLITERAL("timeout")));
+	SPDECLAREC(o_log, op_get(opt, SPLITERAL("log")));
+	SPDECLAREC(o_uid, op_get(opt, SPLITERAL("uid")));
+	SPDECLAREC(o_gid, op_get(opt, SPLITERAL("gid")));
 	
-	int log = o_log ? atoi(o_log->ptr) : 1;
-	int timeout = o_timeout ? atoi(o_timeout->ptr) : 30;
-	char* ip = o_listenip ? o_listenip->ptr : (char*) defaultip;
-	int port = o_port ? atoi(o_port->ptr) : 80;
+	int log = o_log->size ? atoi(o_log->ptr) : 1;
+	int timeout = o_timeout->size ? atoi(o_timeout->ptr) : 30;
+	char* ip = o_listenip->size ? o_listenip->ptr : (char*) defaultip;
+	int port = o_port->size ? atoi(o_port->ptr) : 80;
 	
-	if(argc < 3 || !o_srvroot || !o_tempfs) syntax(opt);
+	if(argc < 3 || !o_srvroot->size || !o_tempfs->size) syntax(opt);
 	SSINIT;
-	httpserver_init(&srv, ip, port, o_tempfs->ptr, o_srvroot->ptr, log, timeout, o_uid ? atoi(o_uid->ptr) : -1, o_gid ? atoi(o_gid->ptr) : -1);
-	
-	op_free(opt);
+	httpserver_init(&srv, ip, port, o_tempfs->ptr, o_srvroot->ptr, log, timeout, o_uid->size ? atoi(o_uid->ptr) : -1, o_gid->size ? atoi(o_gid->ptr) : -1);
+
 	return 0;
 }
 
