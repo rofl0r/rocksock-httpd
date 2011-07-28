@@ -95,11 +95,15 @@ typedef enum {
 } scripttype;
 
 typedef struct {
-	requesttype rqt;
 	size_t streampos;
-	char uri[1024];
 	size_t urilength;
 	size_t contentlength;
+	requesttype rqt;
+} clientrequest_inner;
+
+typedef struct {
+	clientrequest_inner i;
+	char uri[1024 - sizeof(clientrequest_inner)];
 } clientrequest;
 
 typedef enum {
@@ -428,27 +432,27 @@ int httpserver_request_header_complete(httpserver* self, int client, clientreque
 			self->buffer[nread] = '\0';
 		}
 		p = self->buffer;
-		if(req->rqt == RQT_NONE) {
+		if(req->i.rqt == RQT_NONE) {
 			if(!nread || (*p != 'G' && *p != 'P')) return -1; // invalid request, we only accept GET and POST.
 			if (nread <= 5) return 0;
 			if(*p == 'G' && p[1] == 'E' && p[2] == 'T' && p[3] == ' ') {
-				req->rqt = RQT_GET;
+				req->i.rqt = RQT_GET;
 				p += 4;
 			} else if (*p == 'P' && p[1] == 'O' && p[2] == 'S' && p[3] == 'T' && p[4] == ' ') {
-				req->rqt = RQT_POST;
+				req->i.rqt = RQT_POST;
 				p += 5;
 			} else return -1;
 		}
-		req->streampos = p - self->buffer;
+		req->i.streampos = p - self->buffer;
 		while(access_ok(++p) && *p != '\r');
 		// search for URI.
 		if(access_ok(p) && *p == '\r') {
 			*p = 0;
-			len = ((p - self->buffer) - req->streampos);
+			len = ((p - self->buffer) - req->i.streampos);
 			if(len + 1 > sizeof(req->uri))
 				return -1;
-			memcpy(req->uri, self->buffer + req->streampos, len+1);
-			req->urilength = len;
+			memcpy(req->uri, self->buffer + req->i.streampos, len+1);
+			req->i.urilength = len;
 			*p = '\r';
 		} else {
 			check_invalid_or_incomplete:
@@ -458,26 +462,26 @@ int httpserver_request_header_complete(httpserver* self, int client, clientreque
 		}
 		// p is pointing to the first \r at this point.
 		if(checkrnrn) {
-			req->streampos = (p - self->buffer) + 3;
+			req->i.streampos = (p - self->buffer) + 3;
 			return 1;
 		}
 		p++;
-		req->streampos = p - self->buffer;
+		req->i.streampos = p - self->buffer;
 		while(access_ok(p) && !checkrnrn) p++;
 		if(!access_ok(p)) {
 			goto check_invalid_or_incomplete;
 		}
 		// search for content-length.
-		len = req->streampos; // len points to the end of the GET/POST line.
-		req->streampos = (p - self->buffer) + 4;
+		len = req->i.streampos; // len points to the end of the GET/POST line.
+		req->i.streampos = (p - self->buffer) + 4;
 		*p = 0;
 		if(len == nread) return -1; // just to be sure...
-		if(req->rqt == RQT_POST) {
+		if(req->i.rqt == RQT_POST) {
 			//if(( p = strstr(self->buffer + len, "Content-Length: "))) { // THANX LYNX for "Content-length"
 			if(( p = strstar(self->buffer + len, CL_LIT, CL_LITS))) {
 				if(access_ok(p + CL_LITS + 1)) {
 					p += CL_LITS;
-					req->contentlength = atoi(p);
+					req->i.contentlength = atoi(p);
 				} else return -1;
 			}
 		}
@@ -502,9 +506,9 @@ int httpserver_get_filename(httpserver* self, clientrequest* req) {
 	char* p = req->uri;
 	size_t vlen = 0;
 	while (*p && *p != '?' && *p != ' ') p++;
-	req->urilength = p - req->uri;
+	req->i.urilength = p - req->uri;
 	*p = 0;
-	if(!req->urilength
+	if(!req->i.urilength
 #ifdef ALLOW_TRAVERSAL
 #warning this is a dangerous flag and should only be set for testing!
 #else
@@ -512,10 +516,10 @@ int httpserver_get_filename(httpserver* self, clientrequest* req) {
 #endif
 	) return -1;
 	vlen = (p[-1] == '/') ? index_html_l : 0;
-	if(self->servedir.size + req->urilength + vlen >= sizeof(self->pathbuf)) return -2;
+	if(self->servedir.size + req->i.urilength + vlen >= sizeof(self->pathbuf)) return -2;
 	memcpy(self->pathbuf, self->servedir.ptr, self->servedir.size);
-	memcpy(self->pathbuf + self->servedir.size, req->uri, req->urilength + 1);
-	if(vlen) memcpy(self->pathbuf + self->servedir.size + req->urilength, index_html, vlen+1);
+	memcpy(self->pathbuf + self->servedir.size, req->uri, req->i.urilength + 1);
+	if(vlen) memcpy(self->pathbuf + self->servedir.size + req->i.urilength, index_html, vlen+1);
 	return 0;
 }
 
@@ -661,14 +665,14 @@ int httpserver_on_clientread (void* userdata, int fd, size_t nread) {
 					goto finish;
 				}
 			}
-			if(curreq->rqt == RQT_GET || self->clients[fd].requestsize == curreq->contentlength + curreq->streampos) {
+			if(curreq->i.rqt == RQT_GET || self->clients[fd].requestsize == curreq->i.contentlength + curreq->i.streampos) {
 				httpserver_deliver(self, fd, curreq);
 				if(uploadflag) {
 					free(self->clients[fd].uploadreq);
 					self->clients[fd].uploadreq = NULL;
 					uploadflag = 0;
 				}
-			} else if(!uploadflag && req.rqt == RQT_POST) {
+			} else if(!uploadflag && req.i.rqt == RQT_POST) {
 				self->clients[fd].status = CLIENT_UPLOADING;
 				self->clients[fd].uploadreq = malloc(sizeof(clientrequest));
 				if(!self->clients[fd].uploadreq) return -1;
