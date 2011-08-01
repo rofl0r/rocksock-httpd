@@ -751,7 +751,7 @@ int httpserver_init(httpserver* srv, char* listenip, short port, const char* wor
 
 __attribute__ ((noreturn))
 void syntax(op_state* opt) {
-	ulz_printf("progname -srvroot=/srv/htdocs -tempfs=/dev/shm/ -listenip=0.0.0.0 -port=80 -timeout=30 -log=0 -uid=0 -gid=0\n");
+	ulz_printf("progname -srvroot=/srv/htdocs -tempfs=/dev/shm/ -listenip=0.0.0.0 -port=80 -timeout=30 -log=0 -uid=0 -gid=0 -d\n");
 	ulz_printf("all options except tempfs and srvroot are optional\n");
 	ulz_printf("passed options were:\n");
 	op_printall(opt);
@@ -779,6 +779,21 @@ int main(int argc, char** argv) {
 	
 	if(argc < 3 || !o_srvroot->size || !o_tempfs->size) syntax(opt);
 	SSINIT;
+	
+	if(op_hasflag(opt, SPL("d"))) {
+		// daemonize
+		pid_t pid = fork();
+		if (pid < 0) {
+			log_puts(2, SPLITERAL("fork error"));
+			exit(1);
+		}
+		if (pid > 0) exit(0);
+		setsid(); /* obtain a new process group */
+		int fd;
+		for (fd = getdtablesize(); fd >= 0; --fd) close(fd); /* close all descriptors */
+		fd = open("/dev/null", O_RDWR); dup(fd); dup(fd); /* handle standart I/O */		
+	}
+	
 	httpserver_init(&srv, ip, port, o_tempfs->ptr, o_srvroot->ptr, log, timeout, o_uid->size ? atoi(o_uid->ptr) : -1, o_gid->size ? atoi(o_gid->ptr) : -1);
 
 	return 0;
