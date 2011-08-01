@@ -329,8 +329,8 @@ void rss_write_attachment(RSScript* script, stringptr* outname) {
 						written = fwrite(buf, 1, written, out);
 					} while(fpos < maxpos && written);
 				}
-				fclose(out);
 			}
+			fclose(out);
 		}
 		fclose(in);
 	}
