@@ -145,6 +145,8 @@ void rss_read_request(RSScript* script) {
 	stringptr lb;
 	stringptr* line = &lb;
 	int doneheader = 0, i = 0;
+	int ret;
+	char* buf, *malbuf; size_t buflen;
 	size_t k;
 	int m1 = -1;
 	size_t pos, pos2;
@@ -153,36 +155,51 @@ void rss_read_request(RSScript* script) {
 	stringptr* rp, *key, *val;
 	stringptrlist* kv, *kv2, *kv3;
 	if(fileparser_open(p, script->request_fn)) die("file access", 1);
-	while(!fileparser_readline(p)) {
-		if(!doneheader)
-			script->req.headersize += p->len + 1; // + cut off '\n' at the end
-		if(doneheader)
-			script->req.multishitheadersize += p->len + 1;
-		if(p->len && p->buf[p->len -1] == '\r') {
-			p->len -= 1;
-			p->buf[p->len] = 0;
+	while(!(ret = fileparser_readline(p)) || ret == -3) {
+		malbuf = NULL;
+		if(ret == -3) {
+			buflen = fileparser_getnextlinelength(p);
+			if((ssize_t) buflen <= 0) break;
+			malbuf = malloc(buflen + 1);
+			if(!malbuf) die(RSS_EOUTOFMEM, 1);
+			buf = malbuf;
+			if(fileparser_readline_userbuf(p, buf, buflen + 1)) {
+				free(malbuf);
+				break;
+			}
+		} else {
+			buf = p->buf;
+			buflen = p->len;
 		}
-		if(!p->len) {
+		if(!doneheader)
+			script->req.headersize += buflen + 1; // + cut off '\n' at the end
+		if(doneheader)
+			script->req.multishitheadersize += buflen + 1;
+		if(buflen && buf[buflen -1] == '\r') {
+			buflen -= 1;
+			buf[buflen] = 0;
+		}
+		if(!buflen) {
 			if(!doneheader) doneheader = 1;
 			if(doneheader < 4) continue;
 			break;
 		}
-		if(!i && p->len > 4 && (!(m1 = memcmp(p->buf, "GET ", 4)) || !memcmp(p->buf, "POST ", 5) )) {
+		if(!i && buflen > 4 && (!(m1 = memcmp(buf, "GET ", 4)) || !memcmp(buf, "POST ", 5) )) {
 			if(!m1) script->req.meth = RM_GET;
 			else script->req.meth = RM_POST;
 			pos = !m1 ? 4 : 5;
-			line->ptr = p->buf + pos;
+			line->ptr = buf + pos;
 			s1 = line->ptr;
-			max = line->ptr + (p->len - pos);
+			max = line->ptr + (buflen - pos);
 			while(s1 < max && *s1 && *s1 != '?' && *s1 != ' ') 
 				s1++;
 			if(s1 < max) {
 				save = *s1;
 				*s1 = 0;
-				pos2 = (s1 - p->buf);
+				pos2 = (s1 - buf);
 			}
 			else {
-				pos2 = p->len;
+				pos2 = buflen;
 				save = 0;
 			}
 			line->size = pos2 - pos;
@@ -213,8 +230,8 @@ void rss_read_request(RSScript* script) {
 			}
 			goto le;
 		}
-		line->ptr = p->buf;
-		line->size = p->len;
+		line->ptr = buf;
+		line->size = buflen;
 		if(i && !doneheader) {
 			if((kv = stringptr_splits(line, SPLITERAL(": ")))) {
 				val = stringptrlist_get(kv, 1);
@@ -297,6 +314,7 @@ void rss_read_request(RSScript* script) {
 		}
 		le:
 		i++;
+		if(malbuf) free(malbuf);
 	}
 	fileparser_close(p);
 }
