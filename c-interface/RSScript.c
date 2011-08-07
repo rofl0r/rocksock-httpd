@@ -62,7 +62,7 @@ void rss_init(RSScript* script, int argc, char** argv) {
 	script->req.getparams = kv_new(8);
 	script->req.cookies = kv_new(8);
 	script->info = kv_new(8);
-	script->response_lines = stringptrlist_new(255);
+	script->response_lines = stringptrlist_new(0);
 }
 
 static void my_kv_free(kvlist* l) {
@@ -75,7 +75,7 @@ static void my_kv_free(kvlist* l) {
 			if(t->value) stringptr_free((stringptr*) t->value);
 		}
 	}
-	free(l);
+	kv_free(l);
 }
 
 void rss_free(RSScript* script) {
@@ -221,10 +221,10 @@ void rss_read_request(RSScript* script) {
 									if((key = stringptrlist_get(kv2, 0)) && (val = stringptrlist_get(kv2, 1)) && (s1 = stringptr_strdup(key))) {
 										kv_add(script->req.getparams, s1, key->size, stringptr_copy(val));
 									}
-									free(kv2);
+									stringptrlist_free(kv2);
 								}
 							}
-							free(kv);
+							stringptrlist_free(kv);
 						}
 						stringptr_free(rp);
 					}
@@ -249,11 +249,11 @@ void rss_read_request(RSScript* script) {
 												kv_add(script->req.cookies, s1, key->size, stringptr_copy(val));
 											}
 										}
-										free(kv3);
+										stringptrlist_free(kv3);
 									}
 								}
 							}
-							free(kv2);
+							stringptrlist_free(kv2);
 						}
 					} else {
 						if((s1 = stringptr_strdup(key))) {
@@ -261,7 +261,7 @@ void rss_read_request(RSScript* script) {
 						}
 					}
 				}
-				free(kv);
+				stringptrlist_free(kv);
 			}
 		} else if (doneheader == 1) {
 			if(script->req.meth == RM_POST && (
@@ -279,10 +279,10 @@ void rss_read_request(RSScript* script) {
 										kv_add(script->req.formdata, s1, rp->size, val ? url_decode(val) : NULL);
 									 stringptr_free(rp);
 								}
-								free(kv2);
+								stringptrlist_free(kv2);
 							}
 						}
-						free(kv);
+						stringptrlist_free(kv);
 					}
 				} else if((s1 = strstr(key->ptr, "multipart/form-data; boundary="))) {
 					s1 += 30;
@@ -421,7 +421,7 @@ int rss_is_cookie_authed(RSScript* script) {
 						goto finish;
 					}
 				}
-				free(kv);
+				stringptrlist_free(kv);
 			}
 		}
 		finish:
@@ -489,7 +489,7 @@ static void rss_set_cookie_authdb_entry(RSScript* script, stringptr* authcookie)
 					continue;
 				fwrite("\n", 1, 1, tmp);
 				if(!kv) goto jumpback;
-				free(kv);
+				stringptrlist_free(kv);
 			}
 		}
 		fileparser_close(p);
