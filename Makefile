@@ -16,10 +16,10 @@ CFLAGS_RCB_DBG=${CFLAGS_OWN} ${CFLAGS_DBG} -I ${INCLUDES} ${LINKLIBS} ${CFLAGS}
 all: debug
 
 optimized:
-	CFLAGS="${CFLAGS_RCB_OPT}" rcb ${MAINFILE}
+	CFLAGS="${CFLAGS_RCB_OPT}" rcb --force $(RCBFLAGS) ${MAINFILE} $(LINKLIBS)
 
 debug:
-	CFLAGS="${CFLAGS_RCB_DBG}" rcb ${MAINFILE}
+	CFLAGS="${CFLAGS_RCB_DBG}" rcb --force $(RCBFLAGS) ${MAINFILE} $(LINKLIBS)
 
 
 .PHONY: all optimized debug
