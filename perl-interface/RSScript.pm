@@ -52,6 +52,11 @@ sub new {
 	bless $self, $pkg;
 }
 
+sub set_auth_timeout_seconds {
+	my ($self, $timeout) = @_;
+	$self->{authtimeoutsecs} = $timeout;
+}
+
 sub dump_nonheader {
 	my $self = shift;
 	read_request($self) unless defined($self->{request});
