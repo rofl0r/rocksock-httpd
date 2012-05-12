@@ -17,6 +17,7 @@ all: debug
 
 optimized:
 	CFLAGS="${CFLAGS_RCB_OPT}" rcb --force $(RCBFLAGS) ${MAINFILE} $(LINKLIBS)
+	strip --remove-section .comment httpserver.out
 
 debug:
 	CFLAGS="${CFLAGS_RCB_DBG}" rcb --force $(RCBFLAGS) ${MAINFILE} $(LINKLIBS)
