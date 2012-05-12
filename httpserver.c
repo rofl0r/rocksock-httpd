@@ -35,6 +35,7 @@
 #include "../lib/include/filelib.h"
 #include "../lib/include/optparser.h"
 #include "../lib/include/logger.h"
+#include "../lib/include/proclib.h"
 
 static const char content_type_text_html[] = "text/html";
 static const char content_type_text_plain[] = "text/plain";
@@ -111,7 +112,6 @@ typedef struct {
 #define SSA_MAXELEM 8
 #define SSA_ELEMSIZE (sizeof(clientrequest))
 #include "../lib/include/ssalloc.c"
-
 
 typedef enum {
 	CL_NONE = 0,
@@ -780,19 +780,7 @@ int main(int argc, char** argv) {
 	if(argc < 3 || !o_srvroot->size || !o_tempfs->size) syntax(opt);
 	SSINIT;
 	
-	if(op_hasflag(opt, SPL("d"))) {
-		// daemonize
-		pid_t pid = fork();
-		if (pid < 0) {
-			log_puts(2, SPLITERAL("fork error"));
-			exit(1);
-		}
-		if (pid > 0) exit(0);
-		setsid(); /* obtain a new process group */
-		int fd;
-		for (fd = getdtablesize(); fd >= 0; --fd) close(fd); /* close all descriptors */
-		fd = open("/dev/null", O_RDWR); dup(fd); dup(fd); /* handle standart I/O */		
-	}
+	if(op_hasflag(opt, SPL("d"))) daemonize();
 	
 	httpserver_init(&srv, ip, port, o_tempfs->ptr, o_srvroot->ptr, log, timeout, o_uid->size ? atoi(o_uid->ptr) : -1, o_gid->size ? atoi(o_gid->ptr) : -1);
 
