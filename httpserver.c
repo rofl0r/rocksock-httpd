@@ -13,7 +13,7 @@
 
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
-    
+
  */
 
 
@@ -135,8 +135,8 @@ typedef struct {
 #endif
 
 typedef struct {
-	char buffer[USER_BUFSIZE_KB*1024]; 
-	/* with buffersize 96K we can deliver a smoking ~75MB/s in turbomode. 
+	char buffer[USER_BUFSIZE_KB*1024];
+	/* with buffersize 96K we can deliver a smoking ~75MB/s in turbomode.
 	 * bigger values doesnt seem to improve performance. maybe my hdd's were the bottleneck.
 	 * 16K is sufficient for a 100Mbit line.
 	 */
@@ -184,7 +184,7 @@ const char* httpserver_get_contenttype(char* filename, char* fileext) {
 	unsigned char fe[16] = {0};
 	unsigned char* fex = (unsigned char*) fileext;
 	int temp;
-	
+
 	for (i = 0; i < 4; i++) {
 		if(!fex[i]) break;
 		fe[i] = fex[i];
@@ -195,20 +195,20 @@ const char* httpserver_get_contenttype(char* filename, char* fileext) {
 			return typemap[i].content_type;
 		i++;
 	}
-	if((temp = open(filename, O_RDONLY)) == -1) 
+	if((temp = open(filename, O_RDONLY)) == -1)
 		return content_type_text_plain;
-	
+
 	i = read(temp, fe, sizeof(fe));
 	close(temp);
-	
+
 	if(i < sizeof(fe))
 		return content_type_binary_octet_stream;
-	
+
 	for(i = 0; i < sizeof(fe); i++)
 		if(fe[i] < 9 || fe[i] > 127)
 			return content_type_binary_octet_stream;
-		
-	return content_type_text_plain;	
+
+	return content_type_text_plain;
 }
 
 __attribute__ ((noreturn))
@@ -241,7 +241,7 @@ char* httpserver_get_client_ip(httpserver* self, struct sockaddr_storage* ip) {
 	return (char*) inet_ntop(PF_INET, &((struct sockaddr_in*) ip)->sin_addr, self->buffer, sizeof(self->buffer));
 	else return (char*) inet_ntop(PF_INET6, &((struct sockaddr_in6*) ip)->sin6_addr, self->buffer, sizeof(self->buffer));
 #else
-	if(ulz_snprintf(self->buffer, sizeof(self->buffer), "%d.%d.%d.%d", 
+	if(ulz_snprintf(self->buffer, sizeof(self->buffer), "%d.%d.%d.%d",
 		     ((unsigned char*)(&((struct sockaddr_in*)ip)->sin_addr))[0],
 		     ((unsigned char*)(&((struct sockaddr_in*)ip)->sin_addr))[1],
 		     ((unsigned char*)(&((struct sockaddr_in*)ip)->sin_addr))[2],
@@ -271,22 +271,22 @@ int httpserver_disconnect_client(httpserver* self, int client, int doclose) {
 		free_stream(&self->clients[client].responsestream_header);
 		free_stream(&self->clients[client].responsestream);
 		free_stream(&self->clients[client].requeststream);
-	}	
+	}
 	self->clients[client].act_responsestream = -1;
-	
+
 	self->clients[client].requestsize = 0;
 #ifndef DEBUG
 	unlink(httpserver_get_client_infostream_fn(self, client));
 	unlink(httpserver_get_client_requeststream_fn(self, client));
 	unlink(httpserver_get_client_responsestream_fn(self, client));
 #endif
-	if(doclose == 1) 
+	if(doclose == 1)
 		rocksockserver_disconnect_client(&self->serva, client);
 	if(doclose == 1 || !doclose) {
 		self->numclients--;
 		httpserver_idlemode(self, client);
 	}
-	
+
 	self->clients[client].status = CLIENT_DISCONNECTED;
 	self->clients[client].flags = CL_NONE;
 	return 0;
@@ -306,14 +306,14 @@ int httpserver_on_clientconnect (void* userdata, struct sockaddr_storage* client
 	int info;
 	unsigned fail = 0;
 	size_t len;
-	
+
 	if(fd < 0) return -1;
 	if(fd >= USER_MAX_FD) {
 		_httpserver_disconnect_client(self, fd, 1);
 		return -2;
 	}
 	// put into nonblocking mode, so that writes will not block the server
-	int flags = fcntl(fd, F_GETFL); 
+	int flags = fcntl(fd, F_GETFL);
 	if(flags == -1) return -1;
 	if(fcntl(fd, F_SETFL, flags | O_NONBLOCK) == -1) return -2;
 	self->numclients++;
@@ -413,10 +413,10 @@ int httpserver_on_clientwantsdata (void* userdata, int fd) {
 					return 3;
 				}
 			}
-			if(nwritten < nread) 
+			if(nwritten < nread)
 				lseek(self->clients[fd].act_responsestream, -(nread - nwritten), SEEK_CUR);
 		}
-	} else if ((self->clients[fd].status != CLIENT_DISCONNECTED) && 
+	} else if ((self->clients[fd].status != CLIENT_DISCONNECTED) &&
 			(!(rand() % 1000) && httpserver_check_timeout(self, fd))
 		) {
 		_httpserver_disconnect_client(self, fd, 1);
@@ -433,7 +433,7 @@ int httpserver_request_header_complete(httpserver* self, int client, clientreque
 	size_t len;
 	int done = 0;
 	char* p;
-	
+
 	memset(req, 0, sizeof(clientrequest));
 	lseek(self->clients[client].requeststream, 0, SEEK_SET);
 
@@ -510,9 +510,9 @@ int httpserver_request_header_complete(httpserver* self, int client, clientreque
 				self->clients[client].flags |= CL_KEEP_ALIVE;
 		}
 		return 1;
-		
+
 	} while (!done && nread == sizeof(self->buffer));
-	
+
 	return 0;
 	#undef access_ok
 	#undef checkrnrn
@@ -573,7 +573,7 @@ int httpserver_deliver(httpserver* self, int client, clientrequest* req) {
 	static const size_t err404l = sizeof(err404);
 	static const char err200[] = "HTTP/1.1 200 OK\r\nContent-Type: %s\r\nContent-Length: %d\r\n\r\n";
 	//static const size_t err200l = sizeof(err200);
-	
+
 	size_t len;
 	int ret = 0;
 	int res;
@@ -584,7 +584,7 @@ int httpserver_deliver(httpserver* self, int client, clientrequest* req) {
 	free_stream(&self->clients[client].requeststream); // otherwise buffers may not be flushed to disk
 	self->clients[client].status = CLIENT_WRITING;
 	httpserver_idlemode(self, client);
-	
+
 #define respond(x, y, z) do {rh = (char*) x; rl = y; res = z; goto writeheader;} while (0);
 
 #ifdef SERVER_MODE_BLANK
@@ -598,13 +598,13 @@ int httpserver_deliver(httpserver* self, int client, clientrequest* req) {
 
 	if(req)
 		ret = httpserver_get_filename(self, req);
-	
-	if(!req || ret) 
+
+	if(!req || ret)
 		respond(err500, err500l, 1);
-	
-	if(access(self->pathbuf, R_OK) == -1) 
+
+	if(access(self->pathbuf, R_OK) == -1)
 		respond(err404, err404l, 2);
-	
+
 	fe = getFileExt(self->pathbuf, strlen(self->pathbuf));
 	if(!memcmp(fe, "pl", 2) || !memcmp(fe, "cgi", 3)) {
 		if(access(self->pathbuf, X_OK) == -1) {
@@ -619,7 +619,7 @@ int httpserver_deliver(httpserver* self, int client, clientrequest* req) {
 		if(ret && self->log)
 			ulz_fprintf(1, "[%d] script %s returned error code %d\n", client, self->pathbuf, ret);
 		respond(NULL, 0, 0);
-		
+
 	} else {
 		len = getfilesize(self->pathbuf);
 		if(len > sizeof(self->buffer))
@@ -628,7 +628,7 @@ int httpserver_deliver(httpserver* self, int client, clientrequest* req) {
 			respond(self->buffer, ulz_snprintf(self->buffer, sizeof(self->buffer), err200, httpserver_get_contenttype(self->pathbuf, fe), (int) len), 0);
 		} else respond(err404, err404l, 2);
 	}
-	
+
 #undef respond
 
 	writeheader:
@@ -644,7 +644,7 @@ int httpserver_deliver(httpserver* self, int client, clientrequest* req) {
 		ulz_fprintf(1, "%s\n", httpserver_get_client_responsestream_fn(self, client));
 		log_perror("failed to open response file");
 		return 1;
-	} 
+	}
 	if(rh && write(self->clients[client].responsestream_header, rh, rl) != rl) {
 		if(self->log)
 			ulz_fprintf(1, "[%d] error writing to response file\n", client);
@@ -672,11 +672,11 @@ int httpserver_on_clientread (void* userdata, int fd, size_t nread) {
 		case CLIENT_READING:
 			if(!self->clients[fd].requestsize && nread == sizeof(self->buffer))
 				httpserver_turbomode(self, fd);
-			
+
 			readchunk:
 			self->clients[fd].requestsize += nread;
 			if(write(self->clients[fd].requeststream, self->buffer, nread) != nread) {
-				if(self->log) 
+				if(self->log)
 					ulz_fprintf(1, "[%d] error writing to request file\n", fd);
 				_httpserver_disconnect_client(self, fd, 1);
 				goto finish;
@@ -722,7 +722,7 @@ int httpserver_on_clientread (void* userdata, int fd, size_t nread) {
 
 int httpserver_on_clientdisconnect (void* userdata, int fd) {
 	httpserver* self = (httpserver*) userdata;
-	if(fd < 0 || fd >= USER_MAX_FD) 
+	if(fd < 0 || fd >= USER_MAX_FD)
 		return -1;
 	return _httpserver_disconnect_client(self, fd, 0);
 }
@@ -741,7 +741,7 @@ int httpserver_init(httpserver* srv, char* listenip, short port, const char* wor
 		log_perror("setgid");
 	if(gid != -1 && setgroups(0, NULL) == -1)
 		log_perror("setgroups");
-	if(uid != -1 && setuid(uid) == -1) 
+	if(uid != -1 && setuid(uid) == -1)
 		log_perror("setuid");
 
 	// set up a temporary dir with 0700, and unpredictable name
@@ -750,10 +750,10 @@ int httpserver_init(httpserver* srv, char* listenip, short port, const char* wor
 		log_perror("mkdtemp");
 		exit(1);
 	}
-	
+
 	srv->workdir.size = strlen(srv->tempdir);
 	srv->workdir.ptr = srv->tempdir;
-	
+
 	if(rocksockserver_loop(&srv->serva, srv->buffer, sizeof(srv->buffer), &httpserver_on_clientconnect, &httpserver_on_clientread, &httpserver_on_clientwantsdata, &httpserver_on_clientdisconnect)) return -2;
 	return 0;
 }
@@ -780,17 +780,17 @@ int main(int argc, char** argv) {
 	SPDECLAREC(o_log, op_get(opt, SPLITERAL("log")));
 	SPDECLAREC(o_uid, op_get(opt, SPLITERAL("uid")));
 	SPDECLAREC(o_gid, op_get(opt, SPLITERAL("gid")));
-	
+
 	int log = o_log->size ? atoi(o_log->ptr) : 1;
 	int timeout = o_timeout->size ? atoi(o_timeout->ptr) : 30;
 	char* ip = o_listenip->size ? o_listenip->ptr : (char*) defaultip;
 	int port = o_port->size ? atoi(o_port->ptr) : 80;
-	
+
 	if(argc < 3 || !o_srvroot->size || !o_tempfs->size) syntax(opt);
 	SSINIT;
-	
+
 	if(op_hasflag(opt, SPL("d"))) daemonize();
-	
+
 	httpserver_init(&srv, ip, port, o_tempfs->ptr, o_srvroot->ptr, log, timeout, o_uid->size ? atoi(o_uid->ptr) : -1, o_gid->size ? atoi(o_gid->ptr) : -1);
 
 	return 0;
