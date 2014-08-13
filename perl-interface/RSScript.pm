@@ -138,6 +138,11 @@ sub read_request {
 				$self->{request}->{$key} = defined($value) ? $value : undef;
 			}
 		} elsif ($doneheader == 1) {
+			if($self->{request}->{method} eq "POST" &&
+			 defined($self->{request}->{"Content-type"})) {
+				#work around lynx bug
+				$self->{request}->{"Content-Type"} = $self->{request}->{"Content-type"};
+			}
 			if($self->{request}->{method} eq "POST" && 
 			defined($self->{request}->{"Content-Type"}) &&
 			$self->{request}->{"Content-Type"} =~ /form-urlencoded/) { #Content-Type: application/x-www-form-urlencoded
