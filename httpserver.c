@@ -586,8 +586,17 @@ int httpserver_deliver(httpserver* self, int client, clientrequest* req) {
 	httpserver_idlemode(self, client);
 	
 #define respond(x, y, z) do {rh = (char*) x; rl = y; res = z; goto writeheader;} while (0);
-	
-	if(req) 
+
+#ifdef SERVER_MODE_BLANK
+	/* in this mode, the server always returns success and a blank html site
+	   useful for sites you redirected to localhost via /etc/hosts */
+
+	static const char blank_page[] = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: 13\r\n\r\n<html></html>";
+	static const size_t blank_page_l = sizeof(blank_page);
+	respond(blank_page, blank_page_l, 0);
+#endif
+
+	if(req)
 		ret = httpserver_get_filename(self, req);
 	
 	if(!req || ret) 
