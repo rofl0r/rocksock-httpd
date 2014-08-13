@@ -556,6 +556,7 @@ int httpserver_spawn(httpserver* self, char* script, int client, scripttype styp
 	httpserver_get_client_responsestream_fn(self, client);
 	pid = fork();
 	if(!pid) {
+		chdir(self->servedir.ptr);
 		execl(scriptcp, scriptcp, reqfn, self->pathbuf, infofn, NULL);
 	} else if(pid < 0) log_perror("failed to fork");
 	else {
