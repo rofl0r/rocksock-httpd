@@ -72,7 +72,7 @@ static void my_kv_free(kvlist* l) {
 	for(i = 0; i < kv_getsize(l); i++) {
 		if((t = kv_get(l, i))) {
 			free(t->ptr);
-			if(t->value) stringptr_free((stringptr*) t->value);
+			if(t->value) stringptr_free(t->value);
 		}
 	}
 	kv_free(l);
