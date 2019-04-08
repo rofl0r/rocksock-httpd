@@ -67,6 +67,6 @@ void rss_respond_quick(RSScript* script, stringptr* err);
 void rss_respond500(RSScript* script);
 void rss_respond404(RSScript* script);
 
-#endif
+#pragma RcB2 DEP "RSScript.c"
 
-//RcB: DEP "RSScript.c"
+#endif
