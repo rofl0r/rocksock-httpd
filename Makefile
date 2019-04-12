@@ -16,11 +16,11 @@ CFLAGS_RCB_DBG=${CFLAGS_OWN} ${CFLAGS_DBG} -I ${INCLUDES} ${LINKLIBS} ${CFLAGS}
 all: debug
 
 optimized:
-	CFLAGS="${CFLAGS_RCB_OPT}" rcb --force $(RCBFLAGS) ${MAINFILE} $(LINKLIBS)
+	CFLAGS="${CFLAGS_RCB_OPT}" rcb2 $(RCBFLAGS) ${MAINFILE} $(LINKLIBS)
 	strip --remove-section .comment httpserver.out
 
 debug:
-	CFLAGS="${CFLAGS_RCB_DBG}" rcb --force $(RCBFLAGS) ${MAINFILE} $(LINKLIBS)
+	CFLAGS="${CFLAGS_RCB_DBG}" rcb2 $(RCBFLAGS) ${MAINFILE} $(LINKLIBS)
 
 
 .PHONY: all optimized debug
